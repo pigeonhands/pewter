@@ -1,6 +1,7 @@
 pub mod edata;
 pub mod idata;
 pub mod rsrc;
+pub mod pdata;
 use crate::containers::Table;
 use crate::error::Result;
 use crate::io::{ReadData, WriteData};
@@ -8,14 +9,18 @@ use bitflags::bitflags;
 use core::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
+use super::optional_header::data_directories::ImageDataDirectory;
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SectionTable(Table<SectionTableRow>);
 
 impl SectionTable {
+    #[inline(always)]
     pub fn new_linear(data_ptr: &mut &[u8], items_count: usize) -> Result<Self> {
         Table::new_linear(data_ptr, items_count).map(Self)
     }
 
+    #[inline(always)]
     pub fn new_with_reader(
         data_ptr: &mut &[u8],
         items_count: usize,
@@ -24,13 +29,18 @@ impl SectionTable {
         Table::new_with_reader(data_ptr, items_count, read_item).map(Self)
     }
 
+    #[inline(always)]
     pub fn find_rva(&self, virtual_address: usize) -> Option<&SectionTableRow> {
+        if virtual_address == 0 {
+            return None;
+        }
         self.0.iter().find(|row| {
             virtual_address >= (row.virtual_address as usize)
                 && virtual_address < (row.virtual_address as usize + row.virtual_size as usize)
         })
     }
 
+    #[inline(always)]
     pub fn find_rva_map<T>(
         &self,
         virtual_address: usize,
@@ -39,6 +49,7 @@ impl SectionTable {
         self.find_rva(virtual_address).map(func).transpose()
     }
 
+    #[inline(always)]
     pub fn find_rva_data<'a>(
         &self,
         image_base: &'a [u8],
@@ -48,13 +59,15 @@ impl SectionTable {
             .map(|section| section.get_data(image_base, virtual_address))
     }
 
-    pub fn find_rva_data_map<T>(
+    #[inline(always)]
+    pub fn find_data_directory_data_map<T>(
         &self,
         image_base: &[u8],
-        virtual_address: usize,
+        data_directory: &ImageDataDirectory,
         func: impl FnMut(&[u8]) -> Result<T>,
     ) -> Result<Option<T>> {
-        self.find_rva_data(image_base, virtual_address)
+        self.find_rva_data(image_base, data_directory.virtual_address as usize)
+            .map(|data| &data[..data_directory.size as usize])
             .map(func)
             .transpose()
     }
@@ -284,36 +297,49 @@ impl WriteData for SectionTableRow {
 #[derive(Debug, Default)]
 pub struct SpecialSections {
     /// .edata section
-    pub edata: Option<edata::ExportTableDataDirectory>,
-    // .idata section
-    pub idata: Option<idata::ImportTableDataDirectory>,
+    pub export_table: Option<edata::ExportTableDataDirectory>,
+    /// .idata section
+    pub import_table: Option<idata::ImportTableDataDirectory>,
+    /// .pdata section
+    pub exception_table: Option<pdata::ExceptionHandlerDataDirectory>,
 }
 
 impl SpecialSections {
     pub fn parse(
         file_bytes: &[u8],
+        coff_header: &super::coff::CoffFileHeader,
         optional_header: &super::optional_header::OptionalHeader,
         section_table: &SectionTable,
     ) -> Result<Self> {
         let dd = &optional_header.data_directories;
 
         Ok(Self {
-            edata: section_table.find_rva_data_map(
+            export_table: section_table.find_data_directory_data_map(
                 file_bytes,
-                dd.export_table.virtual_address as usize,
+                &dd.export_table,
                 |edata_bytes| {
                     edata::ExportTableDataDirectory::parse(file_bytes, edata_bytes, section_table)
                 },
             )?,
-            idata: section_table.find_rva_data_map(
+            import_table: section_table.find_data_directory_data_map(
                 file_bytes,
-                dd.import_table.virtual_address as usize,
+                &dd.import_table,
                 |idata_bytes| {
                     idata::ImportTableDataDirectory::parse(
                         file_bytes,
                         idata_bytes,
                         section_table,
                         optional_header.standard_fields.magic,
+                    )
+                },
+            )?,
+            exception_table: section_table.find_data_directory_data_map(
+                file_bytes,
+                &dd.exception_table,
+                |pdata_bytes| {
+                    pdata::ExceptionHandlerDataDirectory::parse(
+                        pdata_bytes,
+                        coff_header.machine,
                     )
                 },
             )?,

@@ -2,7 +2,7 @@ use bitflags::bitflags;
 
 use crate::io::{ReadData, WriteData};
 
-#[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ImageFileMachine {
     #[default]

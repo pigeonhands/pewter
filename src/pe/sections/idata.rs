@@ -58,6 +58,8 @@ pub struct ImportTableDataDirectoryEntry {
     /// The import directory table consists of an array of import
     /// directory entries, one entry for each DLL to which the image refers.
     pub import_directory_table: ImportDirectoryTable,
+    /// from [`ImportDirectoryTable::name_rva`]
+    pub dll_name: String,
     /// An import lookup table is an array of 32-bit numbers for PE32 or an array of 64-bit numbers for PE32+.
     /// Each entry uses the bit-field format that is described in the following table. In this format, bit 31
     /// is the most significant bit for PE32 and bit 63 is the most significant bit for PE32+.
@@ -110,8 +112,24 @@ impl ImportTableDataDirectoryEntry {
             Table(lookup_items)
         };
 
+        let dll_name = {
+            let dll_name_data = sections
+            .find_rva_data(
+                file_bytes,
+                import_directory_table.name_rva as usize,
+            )
+            .ok_or_else(|| {
+                PerwError::invalid_image_format(
+                    "Failed to map import_directory_table.name_rva inside image",
+                )
+            })?;
+            let null_terminator = dll_name_data.iter().position(|c| *c == 0).unwrap_or(0);
+            String::from_utf8_lossy(&dll_name_data[..null_terminator]).into()
+        };
+
         Ok(Self {
             import_directory_table,
+            dll_name,
             import_lookup_table,
         })
     }

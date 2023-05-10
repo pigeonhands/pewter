@@ -50,7 +50,12 @@ impl PEFile {
             SectionTable::new_linear(read_ptr, coff_header.number_of_sections as usize)?;
 
         let special_sections = match &optional_header {
-            Some(h) => sections::SpecialSections::parse(data, &h, &section_table)?,
+            Some(optioal_header) => sections::SpecialSections::parse(
+                data,
+                &coff_header,
+                &optioal_header,
+                &section_table,
+            )?,
             None => Default::default(),
         };
 

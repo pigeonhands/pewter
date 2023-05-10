@@ -1,10 +1,14 @@
-use perw::pe::PEFile;
-fn main() {
-    env_logger::init();
+use std::env;
 
-    let data = std::fs::read(r#"C:\re\dnspy\bin\dnlib.dll"#).unwrap();
+use pewter::pe::PEFile;
+
+fn main() {
+    let current_exec = env::args().next().unwrap();
+
+    let data = std::fs::read(&current_exec).unwrap();
     let pe: PEFile = PEFile::from_bytes(&data).unwrap();
-    //let pe = PE::parse(&data).unwrap();
 
     println!("{:#?}", pe);
+    println!("Loaded {}", current_exec);
+
 }

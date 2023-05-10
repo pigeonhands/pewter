@@ -9,7 +9,7 @@ use crate::io::ReadData;
 use crate::io::Reader;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Table<T>(pub(crate) Vec<T>);
+pub struct Table<T>(pub Vec<T>);
 
 impl<T> Table<T> {
     pub fn new() -> Self {
