@@ -190,40 +190,40 @@ bitflags! {
     }
 }
 
-/// At the beginning of an object file, or immediately after the signature of an image file, 
-/// is a standard COFF file header in the following format. Note that the Windows 
+/// At the beginning of an object file, or immediately after the signature of an image file,
+/// is a standard COFF file header in the following format. Note that the Windows
 /// loader limits the number of sections to 96.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct COFFFileHeader {
+pub struct CoffFileHeader {
     /// The number that identifies the type of target machine.
     pub machine: ImageFileMachine,
-    /// The number of sections. This indicates the size of the section table, 
-    /// which immediately follows the headers. 
+    /// The number of sections. This indicates the size of the section table,
+    /// which immediately follows the headers.
     pub number_of_sections: u16,
-    /// The low 32 bits of the number of seconds since 00:00 January 1, 1970 
-    /// (a C run-time time_t value), which indicates when the file was created. 
+    /// The low 32 bits of the number of seconds since 00:00 January 1, 1970
+    /// (a C run-time time_t value), which indicates when the file was created.
     pub date_time_stamp: u32,
-    /// The file offset of the COFF symbol table, or zero if no COFF symbol table is present. 
-    /// This value should be zero for an image because COFF debugging information is deprecated. 
+    /// The file offset of the COFF symbol table, or zero if no COFF symbol table is present.
+    /// This value should be zero for an image because COFF debugging information is deprecated.
     pub pointer_to_symbol_table: u32,
-    /// The number of entries in the symbol table. This data can be used to locate the 
-    /// string table, which immediately follows the symbol table. This value should be zero 
-    /// for an image because COFF debugging information is deprecated. 
+    /// The number of entries in the symbol table. This data can be used to locate the
+    /// string table, which immediately follows the symbol table. This value should be zero
+    /// for an image because COFF debugging information is deprecated.
     pub number_of_symbols: u32,
-    /// The size of the optional header, which is required for executable files but not 
-    /// for object files. This value should be zero for an object file. For a description 
-    /// of the header format, see Optional Header (Image Only). 
+    /// The size of the optional header, which is required for executable files but not
+    /// for object files. This value should be zero for an object file. For a description
+    /// of the header format, see Optional Header (Image Only).
     pub size_of_optional_header: u16,
-    /// The flags that indicate the attributes of the file. For specific flag values, see Characteristics. 
+    /// The flags that indicate the attributes of the file. For specific flag values, see Characteristics.
     pub characteristics: ImageFileCharacteristics,
 }
 
-impl COFFFileHeader {
-    pub const SIZE : usize = 20;
+impl CoffFileHeader {
+    pub const SIZE: usize = 20;
 }
 
-impl ReadData for COFFFileHeader {
-    fn read_from(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
+impl ReadData for CoffFileHeader {
+    fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
         Ok(Self {
             machine: ImageFileMachine::from_u16(reader.read()?),
             number_of_sections: reader.read()?,
@@ -236,8 +236,8 @@ impl ReadData for COFFFileHeader {
     }
 }
 
-impl WriteData for COFFFileHeader {
-    fn write_to(&self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
+impl WriteData for &CoffFileHeader {
+    fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
         writer.write(self.machine.to_u16())?;
         writer.write(self.number_of_sections)?;
         writer.write(self.date_time_stamp)?;
@@ -249,28 +249,31 @@ impl WriteData for COFFFileHeader {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn coff_header_is_20_bytes() {
-        let buffer = [0u8;COFFFileHeader::SIZE];
+        let buffer = [0u8; CoffFileHeader::SIZE];
         let read_ptr = &mut buffer.as_slice();
-        COFFFileHeader::read_from(read_ptr).unwrap();
-        assert!(read_ptr.is_empty());
+        CoffFileHeader::read(read_ptr).unwrap();
+        assert_eq!(read_ptr.len(), 0);
     }
 
     #[test]
     fn read_coff_image_header() {
-        let mut dos_bytes = [0u8;20];
+        let mut dos_bytes = [0u8; 20];
         dos_bytes[0..2].copy_from_slice(&ImageFileMachine::RiscV64.to_u16().to_le_bytes());
-        dos_bytes[18..20].copy_from_slice(&(ImageFileCharacteristics::FILE_DLL | ImageFileCharacteristics::FOR_32BIT_MACHINE).bits().to_le_bytes());
-        let out_dos = COFFFileHeader::read_from(&mut dos_bytes.as_slice()).unwrap();
-        let expected_dos = COFFFileHeader{
+        dos_bytes[18..20].copy_from_slice(
+            &(ImageFileCharacteristics::FILE_DLL | ImageFileCharacteristics::FOR_32BIT_MACHINE)
+                .bits()
+                .to_le_bytes(),
+        );
+        let out_dos = CoffFileHeader::read(&mut dos_bytes.as_slice()).unwrap();
+        let expected_dos = CoffFileHeader {
             machine: ImageFileMachine::RiscV64,
-            characteristics: ImageFileCharacteristics::FILE_DLL | ImageFileCharacteristics::FOR_32BIT_MACHINE,
+            characteristics: ImageFileCharacteristics::FILE_DLL
+                | ImageFileCharacteristics::FOR_32BIT_MACHINE,
             ..Default::default()
         };
         assert_eq!(out_dos, expected_dos);
@@ -278,19 +281,22 @@ mod tests {
 
     #[test]
     fn read_write_coff_image_header() {
-        let expected_dos = COFFFileHeader{
+        let expected_dos = CoffFileHeader {
             machine: ImageFileMachine::Other(0xABCD),
-            characteristics: ImageFileCharacteristics::FILE_DLL | ImageFileCharacteristics::FOR_32BIT_MACHINE,
+            characteristics: ImageFileCharacteristics::FILE_DLL
+                | ImageFileCharacteristics::FOR_32BIT_MACHINE,
             number_of_symbols: 100,
             number_of_sections: 22,
             pointer_to_symbol_table: 33,
             date_time_stamp: 84934,
             size_of_optional_header: 123,
         };
-        let mut coff_header = [0u8;20];
-        expected_dos.write_to(&mut coff_header.as_mut_slice()).unwrap();
-        
-        let out_dos = COFFFileHeader::read_from(&mut coff_header.as_slice()).unwrap();
+        let mut coff_header = [0u8; 20];
+        expected_dos
+            .write_to(&mut coff_header.as_mut_slice())
+            .unwrap();
+
+        let out_dos = CoffFileHeader::read(&mut coff_header.as_slice()).unwrap();
         assert_eq!(out_dos, expected_dos);
     }
 }

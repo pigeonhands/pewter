@@ -1,10 +1,9 @@
-
-//! The MS-DOS stub is a valid application that runs under MS-DOS. 
-//! It is placed at the front of the EXE image. The linker places a default stub here, 
-//! which prints out the message "This program cannot be run in DOS mode" when the image is 
+//! The MS-DOS stub is a valid application that runs under MS-DOS.
+//! It is placed at the front of the EXE image. The linker places a default stub here,
+//! which prints out the message "This program cannot be run in DOS mode" when the image is
 //! run in MS-DOS. The user can specify a different stub by using the /STUB linker option.
-//! At location 0x3c, the stub has the file offset to the PE signature. 
-//! This information enables Windows to properly execute the image file, even though it has an MS-DOS stub. 
+//! At location 0x3c, the stub has the file offset to the PE signature.
+//! This information enables Windows to properly execute the image file, even though it has an MS-DOS stub.
 //! This file offset is placed at location 0x3c during linking.
 use crate::io::{ReadData, WriteData};
 
@@ -56,13 +55,13 @@ pub struct ImageDosHeader {
 
 impl ImageDosHeader {
     /// The expected value of `e_magic`.
-    pub const MAGIC_CONSTANT : u16 = 0x5A4D ;
+    pub const MAGIC_CONSTANT: u16 = 0x5A4D;
 
-    pub const SIZE : usize = 64;
+    pub const SIZE: usize = 64;
 }
 
 impl ReadData for ImageDosHeader {
-    fn read_from(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
+    fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
         Ok(Self {
             e_magic: reader.read()?,
             e_cblp: reader.read()?,
@@ -87,8 +86,8 @@ impl ReadData for ImageDosHeader {
     }
 }
 
-impl WriteData for ImageDosHeader {
-    fn write_to(&self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
+impl WriteData for &ImageDosHeader {
+    fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
         writer.write(self.e_magic)?;
         writer.write(self.e_cblp)?;
         writer.write(self.e_cp)?;
@@ -118,21 +117,20 @@ mod tests {
     use crate::io::*;
     #[test]
     fn dos_header_is_64_bytes() {
-        let buffer = [0u8;ImageDosHeader::SIZE];
+        let buffer = [0u8; ImageDosHeader::SIZE];
         let read_ptr = &mut buffer.as_slice();
 
-        ImageDosHeader::read_from(read_ptr).unwrap();
-        assert!(read_ptr.is_empty());
+        ImageDosHeader::read(read_ptr).unwrap();
+        assert_eq!(read_ptr.len(), 0);
     }
-
 
     #[test]
     fn read_dos_header() {
-        let mut dos_bytes = [0u8;ImageDosHeader::SIZE];
+        let mut dos_bytes = [0u8; ImageDosHeader::SIZE];
         dos_bytes[0..2].copy_from_slice(&ImageDosHeader::MAGIC_CONSTANT.to_le_bytes());
         dos_bytes[60..ImageDosHeader::SIZE].copy_from_slice(&123456u32.to_le_bytes());
-        let out_dos = ImageDosHeader::read_from(&mut dos_bytes.as_slice()).unwrap();
-        let expected_dos = ImageDosHeader{
+        let out_dos = ImageDosHeader::read(&mut dos_bytes.as_slice()).unwrap();
+        let expected_dos = ImageDosHeader {
             e_magic: ImageDosHeader::MAGIC_CONSTANT,
             e_lfanew: 123456u32,
             ..Default::default()
@@ -142,20 +140,22 @@ mod tests {
 
     #[test]
     fn read_write_dos_header() {
-        let expected_dos = ImageDosHeader{
+        let expected_dos = ImageDosHeader {
             e_magic: ImageDosHeader::MAGIC_CONSTANT,
             e_cp: 0xAF,
             e_ip: 0xDE,
-            e_minalloc:12,
-            e_res2: [0xAA;10],
+            e_minalloc: 12,
+            e_res2: [0xAA; 10],
             e_lfanew: 123456u32,
             ..Default::default()
         };
 
-        let mut dos_bytes = [0u8;ImageDosHeader::SIZE];
-        expected_dos.write_to(&mut dos_bytes.as_mut_slice()).unwrap();
-        
-        let out_dos: ImageDosHeader = ImageDosHeader::read_from(&mut dos_bytes.as_slice()).unwrap();
+        let mut dos_bytes = [0u8; ImageDosHeader::SIZE];
+        expected_dos
+            .write_to(&mut dos_bytes.as_mut_slice())
+            .unwrap();
+
+        let out_dos: ImageDosHeader = ImageDosHeader::read(&mut dos_bytes.as_slice()).unwrap();
         assert_eq!(out_dos, expected_dos);
     }
 }
