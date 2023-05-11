@@ -7,12 +7,12 @@ use crate::{
     io::{ReadData, WriteData},
 };
 
-use self::data_directories::{DataDirectories, DataDirectoryName, ImageDataDirectory};
+use self::data_directories::{DataDirectories, ImageDataDirectory, SectionName};
 
-/// Every image file has an optional header that provides information to the loader. 
-/// This header is optional in the sense that some files (specifically, object files) do not have it. 
-/// For image files, this header is required. 
-/// An object file can have an optional header, but generally this header has no function in an object 
+/// Every image file has an optional header that provides information to the loader.
+/// This header is optional in the sense that some files (specifically, object files) do not have it.
+/// For image files, this header is required.
+/// An object file can have an optional header, but generally this header has no function in an object
 /// file except to increase its size.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct OptionalHeader {
@@ -71,7 +71,7 @@ impl OptionalHeader {
 
     /// Get the dada directory if index is less than
     /// [OptionalHeaderWindowsSpecific::number_of_rva_and_sizes](OptionalHeaderWindowsSpecificFields::number_of_rva_and_sizes).
-    pub fn try_get_data_directory(&self, name: DataDirectoryName) -> Option<ImageDataDirectory> {
+    pub fn try_get_data_directory(&self, name: SectionName) -> Option<ImageDataDirectory> {
         (self.windows_specific_fields.number_of_rva_and_sizes() < name as u32)
             .then(|| self.data_directories.get_directory(name))
     }
@@ -88,7 +88,7 @@ impl ReadData for OptionalHeader {
         };
 
         let mut data_directories = DataDirectories::default();
-        for data_dir_name in DataDirectories::ALL_DATA_DIRECTORIES
+        for data_dir_name in SectionName::ALL
             .into_iter()
             .take(windows_specific_fields.number_of_rva_and_sizes() as usize)
         {
@@ -108,11 +108,11 @@ impl WriteData for &OptionalHeader {
         writer.write(&self.standard_fields)?;
         match (self.standard_fields.magic, &self.windows_specific_fields) {
             (OptionalHeaderMagic::PE32, OptionalHeaderWindowsSpecific::PE32(pe)) => writer.write(pe)?,
-            (OptionalHeaderMagic::PE32Plus, OptionalHeaderWindowsSpecific::PE32(pe)) => writer.write(pe)?,
+            (OptionalHeaderMagic::PE32Plus, OptionalHeaderWindowsSpecific::PE32Plus(pe)) => writer.write(pe)?,
             _ => return Err(PerwError::invalid_image_format("Mismatching Optiional Header standard_fields.magic value and windows_specific_fields variant."))
         }
 
-        for data_dir_name in DataDirectories::ALL_DATA_DIRECTORIES
+        for data_dir_name in SectionName::ALL
             .into_iter()
             .take(self.windows_specific_fields.number_of_rva_and_sizes() as usize)
         {

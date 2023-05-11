@@ -8,11 +8,10 @@ license = "MIT"
 
 [dependencies]
 bitflags = "2.2.1"
-snafu = { version = "0.7.4" }
 
 [dev-dependencies]
 
 [features]
-default = ["std", "fast-rw"]
+default = [ "std", "fast-rw"]
 std = []
 fast-rw = []

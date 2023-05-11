@@ -45,6 +45,15 @@ impl<'a> Writer for &'a mut [u8] {
     }
 }
 
+impl<'a> Writer for crate::vec::Vec<u8> {
+    #[inline(always)]
+    fn write_slice(&mut self, data: &[u8]) -> Result<()> {
+        self.extend_from_slice(data);
+        Ok(())
+    }
+}
+
+
 pub trait ReadData: Sized {
     fn read(reader: &mut impl Reader) -> Result<Self>;
 }

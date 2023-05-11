@@ -156,7 +156,7 @@ bitflags! {
         const EXECUTABLE_IMAGE = 0x0002;
         /// COFF line numbers have been removed. This flag is deprecated and should be zero.
         const LINE_NUMBERS_SCRIPPED = 0x0004;
-        /// COFF symbol table entries for local symbols have been removed.
+        /// COFF symbol table entries for local symbols have been removed. 
         /// This flag is deprecated and should be zero.
         const LINE_LOCAL_SYMS_STRIPPED = 0x0008 ;
         /// Obsolete. Aggressively trim working set. This flag is deprecated for Windows

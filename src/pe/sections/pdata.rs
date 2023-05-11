@@ -25,16 +25,28 @@ impl ExceptionHandlerDataDirectory {
             ImageFileMachine::MipsFPU | ImageFileMachine::R4000 => Self::Mips32(
                 Mips32ExceptionHandlerTable::read(&mut section_data.as_ref())?,
             ),
-            ImageFileMachine::Arm 
-            |  ImageFileMachine::PowerPC |ImageFileMachine::PowerPCFP  => Self::ArmPowerPCSH4WindowsCE(
-                ArmPowerPCSH4WindowsCEExceptionHandlerTable::read(&mut section_data.as_ref())?,
-            ),
-            ImageFileMachine::Arm64 | ImageFileMachine::RiscV64 | ImageFileMachine::Amd64 => Self::X64(
-                X64ExceptionHandlerTable::read(&mut section_data.as_ref())?
-            ),
-            _ => Self::Unsupported
+            ImageFileMachine::Arm | ImageFileMachine::PowerPC | ImageFileMachine::PowerPCFP => {
+                Self::ArmPowerPCSH4WindowsCE(ArmPowerPCSH4WindowsCEExceptionHandlerTable::read(
+                    &mut section_data.as_ref(),
+                )?)
+            }
+            ImageFileMachine::Arm64 | ImageFileMachine::RiscV64 | ImageFileMachine::Amd64 => {
+                Self::X64(X64ExceptionHandlerTable::read(&mut section_data.as_ref())?)
+            }
+            _ => Self::Unsupported,
         };
         Ok(val)
+    }
+}
+
+impl WriteData for &ExceptionHandlerDataDirectory {
+    fn write_to(self, writer: &mut impl crate::io::Writer) -> Result<()> {
+        match self {
+            ExceptionHandlerDataDirectory::Mips32(exc) => writer.write(exc),
+            ExceptionHandlerDataDirectory::ArmPowerPCSH4WindowsCE(exec) => writer.write(exec),
+            ExceptionHandlerDataDirectory::X64(exec) => writer.write(exec),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -64,7 +76,7 @@ impl ReadData for Mips32ExceptionHandlerTable {
     }
 }
 
-impl WriteData for Mips32ExceptionHandlerTable {
+impl WriteData for &Mips32ExceptionHandlerTable {
     fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
         writer.write(self.begin_address)?;
         writer.write(self.end_address)?;
@@ -109,6 +121,7 @@ impl ReadData for ArmPowerPCSH4WindowsCEExceptionHandlerTable {
         // 22 bits
         let function_length = (other_fields >> 2) & 0xc34ff;
 
+        // 1 bit
         let instruction_length = match ((other_fields >> 1) & 1) == 1 {
             true => ExceptionHandlerInstructionLength::Is32Bit,
             false => ExceptionHandlerInstructionLength::Is16Bit,
@@ -126,7 +139,7 @@ impl ReadData for ArmPowerPCSH4WindowsCEExceptionHandlerTable {
     }
 }
 
-impl WriteData for ArmPowerPCSH4WindowsCEExceptionHandlerTable {
+impl WriteData for &ArmPowerPCSH4WindowsCEExceptionHandlerTable {
     fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
         writer.write(self.prolog_length)?;
 
@@ -164,7 +177,7 @@ impl ReadData for X64ExceptionHandlerTable {
     }
 }
 
-impl WriteData for X64ExceptionHandlerTable {
+impl WriteData for &X64ExceptionHandlerTable {
     fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
         writer.write(self.begin_address)?;
         writer.write(self.end_address)?;

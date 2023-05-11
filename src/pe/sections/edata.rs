@@ -12,6 +12,8 @@ use crate::{
 
 use super::SectionTable;
 
+use crate::{vec::Vec, string::String};
+
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ExportTableDataDirectory {
     /// The export directory table contains address information that is used to resolve

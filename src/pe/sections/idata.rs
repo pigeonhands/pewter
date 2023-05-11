@@ -10,6 +10,8 @@ use crate::{
     pe::optional_header::OptionalHeaderMagic,
 };
 
+use crate::{vec::Vec, string::String};
+
 /// The import directory table contains address information that is used to resolve fixup
 /// references to the entry points within a DLL image. The import directory table consists of
 /// an array of import directory entries, one entry for each DLL to which the image refers.
@@ -21,6 +23,8 @@ pub struct ImportTableDataDirectory {
     /// directory entries, one entry for each DLL to which the image refers. The last directory entry is
     /// empty (filled with null values), which indicates the end of the directory table.
     pub entries: Table<ImportTableDataDirectoryEntry>,
+    /// True if parsed from PE32, false if PE32Plus
+    pub import_table_32_bit: bool,
 }
 
 impl ImportTableDataDirectory {
@@ -46,7 +50,10 @@ impl ImportTableDataDirectory {
             Table(import_directory_tables)
         };
 
-        Ok(Self { entries })
+        Ok(Self {
+            entries,
+            import_table_32_bit: magic == OptionalHeaderMagic::PE32,
+        })
     }
 }
 
@@ -114,15 +121,12 @@ impl ImportTableDataDirectoryEntry {
 
         let dll_name = {
             let dll_name_data = sections
-            .find_rva_data(
-                file_bytes,
-                import_directory_table.name_rva as usize,
-            )
-            .ok_or_else(|| {
-                PerwError::invalid_image_format(
-                    "Failed to map import_directory_table.name_rva inside image",
-                )
-            })?;
+                .find_rva_data(file_bytes, import_directory_table.name_rva as usize)
+                .ok_or_else(|| {
+                    PerwError::invalid_image_format(
+                        "Failed to map import_directory_table.name_rva inside image",
+                    )
+                })?;
             let null_terminator = dll_name_data.iter().position(|c| *c == 0).unwrap_or(0);
             String::from_utf8_lossy(&dll_name_data[..null_terminator]).into()
         };
@@ -172,7 +176,7 @@ impl ReadData for ImportDirectoryTable {
     }
 }
 
-impl WriteData for ImportDirectoryTable {
+impl WriteData for &ImportDirectoryTable {
     fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
         writer.write(self.import_lookup_table_rva)?;
         writer.write(self.time_date_stamp)?;
@@ -194,6 +198,8 @@ pub enum ImportTableRow {
         hint: u16,
         /// A 31-bit RVA of a hint/name table entry. This field is used only if the
         /// Ordinal/Name Flag bit field is 0 (import by name). For PE32+ bits 62-31 must be zero.
+        name_rva: u32,
+        /// The name read from the name_rva
         name: String,
     },
 }
@@ -212,10 +218,10 @@ impl ImportTableRow {
             return Ok(ImportTableRow::Ordinal((rest_of_fields & 0xFF_FF) as u16));
         }
 
-        let hint_rva = (rest_of_fields & 0x7F_FF_FF_FF) as u32;
+        let name_rva = (rest_of_fields & 0x7F_FF_FF_FF) as u32;
 
         let mut hint_rva_location = sections
-            .find_rva_data(file_bytes, hint_rva as usize)
+            .find_rva_data(file_bytes, name_rva as usize)
             .ok_or_else(|| {
                 PerwError::invalid_image_format(
                     "Failed to map \"Hint/Name Table RVA\" inside image",
@@ -226,6 +232,7 @@ impl ImportTableRow {
         let str_pos = hint_rva_location.iter().position(|c| *c == 0).unwrap_or(0);
         Ok(ImportTableRow::HintName {
             hint,
+            name_rva,
             name: String::from_utf8_lossy(&hint_rva_location[..str_pos]).into(),
         })
     }

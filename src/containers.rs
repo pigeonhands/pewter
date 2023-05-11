@@ -1,12 +1,12 @@
 use core::ops::Deref;
 use core::ops::DerefMut;
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+use crate::vec::Vec;
 
 use crate::error::Result;
 use crate::io::ReadData;
 use crate::io::Reader;
+
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Table<T>(pub Vec<T>);

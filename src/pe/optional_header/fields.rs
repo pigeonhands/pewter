@@ -225,6 +225,8 @@ bitflags! {
         const DYNAMIC_BASE = 0x0040;
         /// Code Integrity checks are enforced.
         const FORCE_INTEGRITY = 0x0080;
+        /// Image is NX compatible. 
+        const NX_COMPAT  = 0x0100;
         /// Isolation aware, but do not isolate the image.
         const NO_ISOLATION = 0x0200;
         /// Does not use structured exception (SE) handling. No SE handler

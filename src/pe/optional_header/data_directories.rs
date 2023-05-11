@@ -2,7 +2,7 @@
 use crate::io::{ReadData, WriteData};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DataDirectoryName {
+pub enum SectionName {
     ExportTable = 0,
     ImportTable = 1,
     ResourceTable = 2,
@@ -19,6 +19,27 @@ pub enum DataDirectoryName {
     DelayImportDescriptor = 13,
     ClrRuntimeHeader = 14,
     Reserved = 15,
+}
+
+impl SectionName {
+    pub const ALL: [SectionName; 16] = [
+        SectionName::ExportTable,
+        SectionName::ImportTable,
+        SectionName::ResourceTable,
+        SectionName::ExceptionTable,
+        SectionName::CertificateTable,
+        SectionName::BaseRelocationTable,
+        SectionName::Debug,
+        SectionName::Architecture,
+        SectionName::GlobalPtr,
+        SectionName::TlsTable,
+        SectionName::LoadConfigTable,
+        SectionName::BoundImport,
+        SectionName::Ita,
+        SectionName::DelayImportDescriptor,
+        SectionName::ClrRuntimeHeader,
+        SectionName::Reserved,
+    ];
 }
 
 /// All the possable data directories.
@@ -60,64 +81,45 @@ pub struct DataDirectories {
 }
 
 impl DataDirectories {
-    pub const ALL_DATA_DIRECTORIES: [DataDirectoryName; 16] = [
-        DataDirectoryName::ExportTable,
-        DataDirectoryName::ImportTable,
-        DataDirectoryName::ResourceTable,
-        DataDirectoryName::ExceptionTable,
-        DataDirectoryName::CertificateTable,
-        DataDirectoryName::BaseRelocationTable,
-        DataDirectoryName::Debug,
-        DataDirectoryName::Architecture,
-        DataDirectoryName::GlobalPtr,
-        DataDirectoryName::TlsTable,
-        DataDirectoryName::LoadConfigTable,
-        DataDirectoryName::BoundImport,
-        DataDirectoryName::Ita,
-        DataDirectoryName::DelayImportDescriptor,
-        DataDirectoryName::ClrRuntimeHeader,
-        DataDirectoryName::Reserved,
-    ];
-
-    pub fn get_directory(&self, name: DataDirectoryName) -> ImageDataDirectory {
+    pub fn get_directory(&self, name: SectionName) -> ImageDataDirectory {
         match name {
-            DataDirectoryName::ExportTable => self.export_table,
-            DataDirectoryName::ImportTable => self.import_table,
-            DataDirectoryName::ResourceTable => self.resource_table,
-            DataDirectoryName::ExceptionTable => self.exception_table,
-            DataDirectoryName::CertificateTable => self.certificate_table,
-            DataDirectoryName::BaseRelocationTable => self.base_relocation_table,
-            DataDirectoryName::Debug => self.debug,
-            DataDirectoryName::Architecture => self.architecture,
-            DataDirectoryName::GlobalPtr => self.global_ptr,
-            DataDirectoryName::TlsTable => self.tls_table,
-            DataDirectoryName::LoadConfigTable => self.load_config_table,
-            DataDirectoryName::BoundImport => self.bound_import,
-            DataDirectoryName::Ita => self.ita,
-            DataDirectoryName::DelayImportDescriptor => self.delay_import_descriptor,
-            DataDirectoryName::ClrRuntimeHeader => self.clr_runtime_header,
-            DataDirectoryName::Reserved => self.reserved,
+            SectionName::ExportTable => self.export_table,
+            SectionName::ImportTable => self.import_table,
+            SectionName::ResourceTable => self.resource_table,
+            SectionName::ExceptionTable => self.exception_table,
+            SectionName::CertificateTable => self.certificate_table,
+            SectionName::BaseRelocationTable => self.base_relocation_table,
+            SectionName::Debug => self.debug,
+            SectionName::Architecture => self.architecture,
+            SectionName::GlobalPtr => self.global_ptr,
+            SectionName::TlsTable => self.tls_table,
+            SectionName::LoadConfigTable => self.load_config_table,
+            SectionName::BoundImport => self.bound_import,
+            SectionName::Ita => self.ita,
+            SectionName::DelayImportDescriptor => self.delay_import_descriptor,
+            SectionName::ClrRuntimeHeader => self.clr_runtime_header,
+            SectionName::Reserved => self.reserved,
         }
     }
 
-    pub fn set_directory(&mut self, name: DataDirectoryName, data: ImageDataDirectory) {
+    pub fn set_directory(&mut self, name: SectionName, data: ImageDataDirectory) {
         match name {
-            DataDirectoryName::ExportTable => self.export_table = data,
-            DataDirectoryName::ImportTable => self.import_table = data,
-            DataDirectoryName::ResourceTable => self.resource_table = data,
-            DataDirectoryName::ExceptionTable => self.exception_table = data,
-            DataDirectoryName::CertificateTable => self.certificate_table = data,
-            DataDirectoryName::BaseRelocationTable => self.base_relocation_table = data,
-            DataDirectoryName::Debug => self.debug = data,
-            DataDirectoryName::Architecture => self.architecture = data,
-            DataDirectoryName::GlobalPtr => self.global_ptr = data,
-            DataDirectoryName::TlsTable => self.tls_table = data,
-            DataDirectoryName::LoadConfigTable => self.load_config_table = data,
-            DataDirectoryName::BoundImport => self.bound_import = data,
-            DataDirectoryName::Ita => self.ita = data,
-            DataDirectoryName::DelayImportDescriptor => self.delay_import_descriptor = data,
-            DataDirectoryName::ClrRuntimeHeader => self.clr_runtime_header = data,
-            DataDirectoryName::Reserved => self.reserved = data,
+            SectionName::ExportTable => self.export_table = data,
+            SectionName::ImportTable => self.import_table = data,
+            SectionName::ResourceTable => self.resource_table = data,
+            SectionName::ExceptionTable => self.exception_table = data,
+            SectionName::CertificateTable => self.certificate_table = data,
+            SectionName::BaseRelocationTable => self.base_relocation_table = data,
+            SectionName::Debug => self.debug = data,
+            SectionName::Architecture => self.architecture = data,
+            SectionName::GlobalPtr => self.global_ptr = data,
+            SectionName::TlsTable => self.tls_table = data,
+            SectionName::LoadConfigTable => self.load_config_table = data,
+            SectionName::BoundImport => self.bound_import = data,
+            SectionName::Ita => self.ita = data,
+            SectionName::DelayImportDescriptor => self.delay_import_descriptor = data,
+            SectionName::ClrRuntimeHeader => self.clr_runtime_header = data,
+            SectionName::Reserved => self.reserved = data,
         }
     }
 }

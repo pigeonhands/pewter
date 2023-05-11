@@ -3,6 +3,8 @@ use crate::{
     io::{Reader, Writer},
 };
 
+use crate::vec::Vec;
+
 pub struct PEStream<T> {
     buffer: T,
     position: usize,
