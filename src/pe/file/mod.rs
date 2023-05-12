@@ -98,7 +98,7 @@ impl PEFile {
     /// # use pewter::PEFile;
     /// let mut data = std::fs::read("Example.exe").unwrap();
     /// 
-    /// let mut pe_file = PEFile::parse_minimal(&data);
+    /// let mut pe_file = PEFile::parse_minimal(&data).unwrap();
     /// 
     /// if let Some(optional_header) = &mut pe_file.optional_header {
     ///     optional_header.data_directories.debug = Default::default();

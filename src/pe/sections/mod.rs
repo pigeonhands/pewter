@@ -3,6 +3,7 @@ pub mod edata;
 pub mod idata;
 pub mod pdata;
 pub mod rsrc;
+pub mod base_relocation;
 use crate::containers::Table;
 use crate::error::Result;
 use crate::io::{ReadData, WriteData};

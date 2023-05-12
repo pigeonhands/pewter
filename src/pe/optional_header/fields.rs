@@ -841,7 +841,7 @@ mod tests {
 
     #[test]
     fn opttional_header_magic_is_2_bytes() {
-        let buffer = [0u8; OptionalHeaderMagic::SIZE];
+        let buffer : [u8; OptionalHeaderMagic::SIZE] = 0x10B_u16.to_le_bytes();
         let read_ptr = &mut buffer.as_slice();
         OptionalHeaderMagic::read(read_ptr).unwrap();
         assert!(read_ptr.is_empty());
