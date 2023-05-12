@@ -1,7 +1,7 @@
 pub mod stream;
 use core::mem::MaybeUninit;
 
-use crate::error::{PerwError, Result};
+use crate::error::{PewterError, Result};
 
 pub trait Reader: Sized {
     fn read_slice(&mut self, size: usize) -> Result<&[u8]>;
@@ -23,7 +23,7 @@ impl<'a> Reader for &'a [u8] {
     #[inline(always)]
     fn read_slice(&mut self, size: usize) -> Result<&'a [u8]> {
         if self.len() < size {
-            return Err(PerwError::not_enough_data(size));
+            return Err(PewterError::not_enough_data(size));
         }
         let (data, remaining) = self.split_at(size);
         *self = remaining;
@@ -35,7 +35,7 @@ impl<'a> Writer for &'a mut [u8] {
     #[inline(always)]
     fn write_slice(&mut self, data: &[u8]) -> Result<()> {
         if self.len() < data.len() {
-            return Err(PerwError::not_enough_space(data.len()));
+            return Err(PewterError::not_enough_space(data.len()));
         }
         let this = core::mem::take(self);
         let (write_buffer, remaining) = this.split_at_mut(data.len());
@@ -72,7 +72,7 @@ impl<const N: usize> ReadData for [u8; N] {
             reader
                 .read_slice(N)?
                 .try_into()
-                .map_err(|_| PerwError::not_enough_data(N))
+                .map_err(|_| PewterError::not_enough_data(N))
         }
     }
 }

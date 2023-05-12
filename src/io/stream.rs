@@ -1,5 +1,5 @@
 use crate::{
-    error::{PerwError, Result},
+    error::{PewterError, Result},
     io::{Reader, Writer},
 };
 
@@ -30,7 +30,7 @@ impl<T: AsRef<[u8]>> Reader for PEStream<T> {
     fn read_slice(&mut self, size: usize) -> Result<&[u8]> {
         let data = self.buffer.as_ref();
         if data.len() < self.position + size {
-            return Err(PerwError::not_enough_data(size));
+            return Err(PewterError::not_enough_data(size));
         }
         let data_pos = self.position;
         self.position += size;
@@ -41,7 +41,7 @@ impl<T: AsRef<[u8]>> Reader for PEStream<T> {
 impl Writer for PEStream<&mut [u8]> {
     fn write_slice(&mut self, data: &[u8]) -> Result<()> {
         if self.position + data.len() > self.buffer.len() {
-            return Err(PerwError::not_enough_space(data.len()));
+            return Err(PewterError::not_enough_space(data.len()));
         }
         self.buffer.as_mut()[self.position..self.position + data.len()].copy_from_slice(data);
         self.position += data.len();

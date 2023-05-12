@@ -8,7 +8,7 @@
 //! file for a particular data directory does not go beyond SizeOfOptionalHeader. For more information,
 //! see COFF File Header (Object and Image).
 use crate::{
-    error::{PerwError, Result},
+    error::{PewterError, Result},
     io::{ReadData, WriteData},
 };
 use bitflags::bitflags;
@@ -33,7 +33,7 @@ impl OptionalHeaderMagic {
             0x10B => Ok(Self::PE32),
             0x20B => Ok(Self::PE32Plus),
             //n => Self::Other(n),
-            _ => Err(PerwError::invalid_image_format(
+            _ => Err(PewterError::invalid_image_format(
                 "Bad optional header magic number",
             )),
         }

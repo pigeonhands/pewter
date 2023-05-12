@@ -3,7 +3,7 @@ mod fields;
 pub use fields::*;
 
 use crate::{
-    error::PerwError,
+    error::PewterError,
     io::{ReadData, WriteData},
 };
 
@@ -109,7 +109,7 @@ impl WriteData for &OptionalHeader {
         match (self.standard_fields.magic, &self.windows_specific_fields) {
             (OptionalHeaderMagic::PE32, OptionalHeaderWindowsSpecific::PE32(pe)) => writer.write(pe)?,
             (OptionalHeaderMagic::PE32Plus, OptionalHeaderWindowsSpecific::PE32Plus(pe)) => writer.write(pe)?,
-            _ => return Err(PerwError::invalid_image_format("Mismatching Optiional Header standard_fields.magic value and windows_specific_fields variant."))
+            _ => return Err(PewterError::invalid_image_format("Mismatching Optiional Header standard_fields.magic value and windows_specific_fields variant."))
         }
 
         for data_dir_name in SectionName::ALL

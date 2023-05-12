@@ -6,7 +6,7 @@
 
 use crate::{
     containers::Table,
-    error::{PerwError, Result},
+    error::{PewterError, Result},
     io::{ReadData, WriteData},
 };
 
@@ -47,7 +47,7 @@ impl ExportTableDataDirectory {
                 export_directory_table.export_address_table as usize,
             )
             .ok_or_else(|| {
-                PerwError::invalid_image_format(
+                PewterError::invalid_image_format(
                     "Failed to map export_address_table_data inside image",
                 )
             })?;
@@ -58,7 +58,7 @@ impl ExportTableDataDirectory {
                 export_directory_table.export_address_table as usize,
             )
             .ok_or_else(|| {
-                PerwError::invalid_image_format(
+                PewterError::invalid_image_format(
                     "Failed to map name_pointer_table_data inside image",
                 )
             })?;
@@ -69,7 +69,7 @@ impl ExportTableDataDirectory {
                 export_directory_table.export_address_table as usize,
             )
             .ok_or_else(|| {
-                PerwError::invalid_image_format(
+                PewterError::invalid_image_format(
                     "Failed to map export_ordinal_table_data inside image",
                 )
             })?;
@@ -77,7 +77,7 @@ impl ExportTableDataDirectory {
         let export_name_data = sections
             .find_rva_data(file_bytes, export_directory_table.name_rva as usize)
             .ok_or_else(|| {
-                PerwError::invalid_image_format(
+                PewterError::invalid_image_format(
                     "Failed to map export_ordinal_table_data inside image",
                 )
             })?;

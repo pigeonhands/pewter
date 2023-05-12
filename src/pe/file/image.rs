@@ -32,7 +32,7 @@ impl PEImage {
             signature,
             coff_header,
             optional_header: optional_header
-                .ok_or_else(|| PerwError::invalid_image_format("No optional header."))?,
+                .ok_or_else(|| PewterError::invalid_image_format("No optional header."))?,
             section_table,
             special_sections,
         })

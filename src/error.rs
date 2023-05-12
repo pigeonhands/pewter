@@ -2,17 +2,17 @@
 use crate::alloc_containers::{error::Error};
 
 
-pub type Result<T> = core::result::Result<T, PerwError>;
+pub type Result<T> = core::result::Result<T, PewterError>;
 
 #[derive(Debug)]
-pub enum PerwError {
+pub enum PewterError {
     NotEnoughDataLeft { attempted_read: usize },
     NotEnoughSpaceLeft { attempted_write: usize },
     InvalidImageFormat { message: &'static str },
 }
 
 
-impl PerwError {
+impl PewterError {
     #[cold]
     pub const fn not_enough_data(size: usize) -> Self {
         Self::NotEnoughDataLeft {
@@ -31,7 +31,7 @@ impl PerwError {
     }
 }
 
-impl core::fmt::Display for PerwError {
+impl core::fmt::Display for PewterError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::InvalidImageFormat { message } => write!(f, "Invalid image format: {}", message),
@@ -42,7 +42,7 @@ impl core::fmt::Display for PerwError {
 }
 
 #[cfg(feature="std")]
-impl Error for PerwError {
+impl Error for PewterError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }

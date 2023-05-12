@@ -3,7 +3,7 @@ pub mod definition;
 pub use image::PEImage;
 
 use crate::{
-    error::{PerwError, Result},
+    error::{PewterError, Result},
     io::{ReadData, Reader, WriteData},
 };
 
@@ -39,14 +39,14 @@ impl PEFile {
         let pe_offset = dos_header.e_lfanew as usize;
 
         if data.len() < pe_offset {
-            return Err(PerwError::not_enough_data(pe_offset));
+            return Err(PewterError::not_enough_data(pe_offset));
         }
 
         let read_ptr = &mut data[pe_offset..].as_ref();
         let signature = read_ptr.read()?;
 
         if signature != Self::SIGNATURE {
-            return Err(PerwError::invalid_image_format("Bad PE signature."));
+            return Err(PewterError::invalid_image_format("Bad PE signature."));
         }
 
         let coff_header: coff::CoffFileHeader = read_ptr.read()?;

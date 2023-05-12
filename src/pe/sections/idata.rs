@@ -5,7 +5,7 @@
 use super::SectionTable;
 use crate::{
     containers::Table,
-    error::{PerwError, Result},
+    error::{PewterError, Result},
     io::{ReadData, Reader, WriteData},
     pe::optional_header::OptionalHeaderMagic,
 };
@@ -88,7 +88,7 @@ impl ImportTableDataDirectoryEntry {
                 import_directory_table.import_lookup_table_rva as usize,
             )
             .ok_or_else(|| {
-                PerwError::invalid_image_format(
+                PewterError::invalid_image_format(
                     "Failed to map import_lookup_table_rva inside image",
                 )
             })?;
@@ -123,7 +123,7 @@ impl ImportTableDataDirectoryEntry {
             let dll_name_data = sections
                 .find_rva_data(file_bytes, import_directory_table.name_rva as usize)
                 .ok_or_else(|| {
-                    PerwError::invalid_image_format(
+                    PewterError::invalid_image_format(
                         "Failed to map import_directory_table.name_rva inside image",
                     )
                 })?;
@@ -223,7 +223,7 @@ impl ImportTableRow {
         let mut hint_rva_location = sections
             .find_rva_data(file_bytes, name_rva as usize)
             .ok_or_else(|| {
-                PerwError::invalid_image_format(
+                PewterError::invalid_image_format(
                     "Failed to map \"Hint/Name Table RVA\" inside image",
                 )
             })?;
