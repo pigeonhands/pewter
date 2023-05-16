@@ -21,8 +21,8 @@ fn main() {
         pe_file
     );
 
-    //current_exec.set_extension("patched.exe");
-    //std::fs::write(&current_exec, &data).unwrap();
+    // current_exec.set_extension("patched.exe");
+    // std::fs::write(&current_exec, &data).unwrap();
 
     // println!("Patched! saved to {}", current_exec.display());
 }

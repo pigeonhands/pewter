@@ -2,7 +2,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct ParseSectionFlags : u32 {
+    pub struct ParseSectionFlags : u16 {
         const NONE = 0;
         const EXPORT_TABLE = 1<<0;
         const IMPORT_TABLE = 1<<1;
@@ -22,8 +22,8 @@ bitflags! {
         const RESERVED = 1<<14;
 
         const ALL = Self::EXPORT_TABLE.bits() |
-        Self::IMPORT_TABLE.bits() |
-        Self::RESOURCE_TABLE.bits() |
+            Self::IMPORT_TABLE.bits() |
+            Self::RESOURCE_TABLE.bits() |
             Self::EXCEPTION_TABLE.bits() |
             Self::CERTIFICATE_TABLE.bits() |
             Self::BASE_RELOCATION_TABLE.bits() |

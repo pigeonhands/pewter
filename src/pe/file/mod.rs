@@ -28,7 +28,8 @@ impl PEFile {
         Self::parse_with_options(data, Options::default())
     }
 
-    /// Parse with [`Options::minimal()`]
+    /// Parse with [`Options::minimal()`].
+    /// Does not parse any [`special_sections`](PEFile::special_sections).
     #[inline(always)]
     pub fn parse_minimal(data: &[u8]) -> Result<Self> {
         Self::parse_with_options(data, Options::minimal())

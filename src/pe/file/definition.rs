@@ -3,7 +3,10 @@ use crate::{pe::sections::SectionFlags, string::String, vec::Vec};
 pub struct PEFileDef {}
 
 /// If a section has a `virtual_address` of 0, it 
-/// is not included
+/// is not included.
+/// 
+/// The named fields are well known section names just for convenience. 
+/// They are treated exactly the same as values in `other`.
 pub struct SectionDefinitions {
     /// .text section
     ///
@@ -30,11 +33,14 @@ impl SectionDefinitions {
     pub fn allign_to_next_section(addr: usize) -> usize {
         (addr + Self::VIRTUAL_ADDRESS_ALIGNMENT) & (!(Self::VIRTUAL_ADDRESS_ALIGNMENT-1))
     }
+
+    /// Iters all sections that have a non-zero `virtual_address`.
     pub fn iter_sections<'a>(&'a self) -> impl Iterator<Item = &SectionHeap> + 'a {
-        [&self.data, &self.text, &self.rdata]
+        [&self.text, &self.data, &self.rdata, &self.reloc]
             .into_iter()
             .flat_map(|f| f.as_ref())
             .chain(self.other.iter())
+            .filter(|heap| heap.virtual_address != 0)
     }
 
     /// Finds the section that contains the given virtual address
@@ -75,7 +81,6 @@ impl SectionDefinitions {
     /// Finds the next availible virtual address
     pub fn next_virtual_address(&self) -> usize {
         let v_addr = self.iter_sections()
-                .filter(|heap| heap.virtual_address != 0)
                 .fold(0, |accumulator, heap| {
             let heap_end_addr = heap.virtual_address as usize + heap.virtual_size();
             if heap_end_addr > accumulator {

@@ -45,7 +45,7 @@ impl WriteData for &ExceptionHandlerDataDirectory {
             ExceptionHandlerDataDirectory::Mips32(exc) => writer.write(exc),
             ExceptionHandlerDataDirectory::ArmPowerPCSH4WindowsCE(exec) => writer.write(exec),
             ExceptionHandlerDataDirectory::X64(exec) => writer.write(exec),
-            _ => Ok(()),
+            ExceptionHandlerDataDirectory::Unsupported => Ok(()),
         }
     }
 }

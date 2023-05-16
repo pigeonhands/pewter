@@ -350,6 +350,8 @@ pub struct SpecialSections {
     pub exception_table: Option<pdata::ExceptionHandlerDataDirectory>,
     /// certificate attribute table
     pub certificate_table: Option<certificate::CertificateDataDirectory>,
+    /// The base relocation table address and size
+    pub relocation_table: Option<base_relocation::BaseRelocationDataDitectory>,
 }
 
 impl SpecialSections {
@@ -402,7 +404,10 @@ impl SpecialSections {
                 )?,
                 ParseSectionFlags::CERTIFICATE_TABLE => {
                     self.parse_certificate_table(file_bytes, section_table, optional_header)?
-                }
+                },
+                ParseSectionFlags::BASE_RELOCATION_TABLE => {
+                    self.parse_base_relocation_table(file_bytes, section_table, optional_header)?
+                },
                 _ => {}
             };
         }
@@ -491,6 +496,20 @@ impl SpecialSections {
             file_bytes,
             &optional_header.data_directories.certificate_table,
             |cert_bytes| certificate::CertificateDataDirectory::parse(cert_bytes),
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn parse_base_relocation_table(
+        &mut self,
+        file_bytes: &[u8],
+        section_table: &SectionTable,
+        optional_header: &super::optional_header::OptionalHeader,
+    ) -> Result<()> {
+        self.relocation_table = section_table.find_data_directory_data_map(
+            file_bytes,
+            &optional_header.data_directories.base_relocation_table,
+            |relocation_data| base_relocation::BaseRelocationDataDitectory::parse(relocation_data),
         )?;
         Ok(())
     }

@@ -221,7 +221,7 @@ impl WriteData for ExportAddress {
 /// Pointer into the export name table.
 /// An export name is defined only if the export name pointer table contains a pointer to it.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ExportNamePointer(u32);
+pub struct ExportNamePointer(pub u32);
 
 impl ReadData for ExportNamePointer {
     fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
@@ -239,7 +239,7 @@ impl WriteData for ExportNamePointer {
 /// Index into the export address table. Ordinals are biased by the Ordinal Base field of the export directory table.
 /// In other words, the ordinal base must be subtracted from the ordinals to obtain true indexes into the export address table.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ExportOrtinal(u16);
+pub struct ExportOrtinal(pub u16);
 
 impl ReadData for ExportOrtinal {
     fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
@@ -259,7 +259,7 @@ impl WriteData for ExportOrtinal {
 /// For exported symbols that do have export names, corresponding entries in the export name pointer table and
 /// export ordinal table work together to associate each name with an ordinal.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ExportName(u16);
+pub struct ExportName(pub u16);
 
 impl ReadData for ExportName {
     fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
