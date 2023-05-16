@@ -1,17 +1,19 @@
+pub mod base_relocation;
 pub mod certificate;
 pub mod edata;
 pub mod idata;
 pub mod pdata;
 pub mod rsrc;
-pub mod base_relocation;
 use crate::containers::Table;
-use crate::error::Result;
+use crate::error::{PewterError, Result};
 use crate::io::{ReadData, WriteData};
 use bitflags::bitflags;
 use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
 
+use super::coff::CoffFileHeader;
 use super::optional_header::data_directories::ImageDataDirectory;
+use super::optional_header::OptionalHeader;
 use super::options::ParseSectionFlags;
 
 use crate::vec::Vec;
@@ -335,6 +337,103 @@ impl WriteData for &SectionTableRow {
     }
 }
 
+/// Sections with their ccorrisponding data
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Sections<'a>(Table<SectionRow<'a>>);
+
+impl<'a> Sections<'a> {
+    pub fn parse(file_bytes: &'a [u8], section_table: SectionTable) -> Result<Self> {
+        let SectionTable(Table(section_table_rows)) = section_table;
+
+        let sections = section_table_rows
+            .into_iter()
+            .map(|section_row| {
+                let heap_start = section_row.pointer_to_raw_data as usize;
+                let heap_end = heap_start + section_row.size_of_raw_data as usize;
+                let bytes = file_bytes.get(heap_start..heap_end).ok_or_else(|| {
+                    PewterError::invalid_image_format(
+                        "Cant map pointer_to_raw_data for section into file",
+                    )
+                });
+                bytes.map(|b| SectionRow {
+                    row: section_row,
+                    data: b.into(),
+                })
+            })
+            .collect::<Result<_>>();
+        sections.map(|s| Self(Table(s)))
+    }
+
+    #[inline(always)]
+    pub fn find_rva(&self, virtual_address: usize) -> Option<&SectionRow> {
+        if virtual_address == 0 {
+            return None;
+        }
+        self.0.iter().find(|section| {
+            let SectionRow { row, .. } = section;
+            virtual_address >= (row.virtual_address as usize)
+                && virtual_address < (row.virtual_address as usize + row.virtual_size as usize)
+        })
+    }
+
+    #[inline(always)]
+    pub fn find_rva_data(&self, virtual_address: usize) -> Option<&[u8]> {
+        self.find_rva(virtual_address)
+            .map(|section| section.get_data(virtual_address))
+    }
+
+    #[inline(always)]
+    pub fn find_data_directory_data_map<T>(
+        &self,
+        data_directory: &ImageDataDirectory,
+        func: impl FnMut(&[u8]) -> Result<T>,
+    ) -> Result<Option<T>> {
+        self.find_rva_data(data_directory.virtual_address as usize)
+            .map(|data| &data[..data_directory.size as usize])
+            .map(func)
+            .transpose()
+    }
+}
+
+#[derive(Default, Clone, PartialEq)]
+pub struct SectionRow<'a> {
+    pub row: SectionTableRow,
+    pub data: crate::borrow::Cow<'a, [u8]>,
+}
+
+impl<'a> SectionRow<'a> {
+    pub fn get_data_range(&self, virtual_address: usize) -> (usize, usize) {
+        let section_offset = virtual_address - self.row.virtual_address as usize;
+        let section_start = self.row.pointer_to_raw_data as usize + section_offset;
+        let section_end =
+            self.row.pointer_to_raw_data as usize + self.row.size_of_raw_data as usize;
+        (section_start, section_end)
+    }
+
+    pub fn get_data(&self, virtual_address: usize) -> &[u8] {
+        let (section_start, section_end) = self.get_data_range(virtual_address);
+        &self.data[section_start..section_end]
+    }
+}
+
+impl<'a> Debug for SectionRow<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SectionRow")
+            .field("row", &self.row)
+            .field("data", &"<hidden>")
+            .finish()
+    }
+}
+
+pub trait ParseSectionData: Sized {
+    fn parse(
+        section_data: &[u8],
+        sections: &Sections,
+        optional_header: &OptionalHeader,
+        coff_header: &CoffFileHeader,
+    ) -> Result<Self>;
+}
+
 /// Sections parsed from [OptionalHeader::data_directories](super::optional_header::OptionalHeader::data_directories).
 ///
 /// If the section is not specigied in [Options::parse_sections](crate::Options::parse_sections), it will be `None`.
@@ -350,6 +449,8 @@ pub struct SpecialSections {
     pub exception_table: Option<pdata::ExceptionHandlerDataDirectory>,
     /// certificate attribute table
     pub certificate_table: Option<certificate::CertificateDataDirectory>,
+    /// The base relocation table address and size
+    pub relocation_table: Option<base_relocation::BaseRelocationDataDitectory>,
 }
 
 impl SpecialSections {
@@ -378,73 +479,19 @@ impl SpecialSections {
     pub fn parse_tables(
         &mut self,
         file_bytes: &[u8],
-        coff_header: &super::coff::CoffFileHeader,
+        _: &super::coff::CoffFileHeader,
         optional_header: &super::optional_header::OptionalHeader,
         section_table: &SectionTable,
         parse_sections: ParseSectionFlags,
     ) -> Result<()> {
         for section in parse_sections.iter() {
             match section {
-                ParseSectionFlags::EXPORT_TABLE => {
-                    self.parse_export_table(file_bytes, section_table, optional_header)?
-                }
-                ParseSectionFlags::IMPORT_TABLE => {
-                    self.parse_import_table(file_bytes, section_table, optional_header)?
-                }
                 ParseSectionFlags::RESOURCE_TABLE => {
                     self.parse_resource_table(file_bytes, section_table, optional_header)?
-                }
-                ParseSectionFlags::EXCEPTION_TABLE => self.parse_exception_table(
-                    file_bytes,
-                    section_table,
-                    optional_header,
-                    coff_header,
-                )?,
-                ParseSectionFlags::CERTIFICATE_TABLE => {
-                    self.parse_certificate_table(file_bytes, section_table, optional_header)?
                 }
                 _ => {}
             };
         }
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn parse_export_table(
-        &mut self,
-        file_bytes: &[u8],
-        section_table: &SectionTable,
-        optional_header: &super::optional_header::OptionalHeader,
-    ) -> Result<()> {
-        self.export_table = section_table.find_data_directory_data_map(
-            file_bytes,
-            &optional_header.data_directories.export_table,
-            |edata_bytes| {
-                edata::ExportTableDataDirectory::parse(file_bytes, edata_bytes, section_table)
-            },
-        )?;
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn parse_import_table(
-        &mut self,
-        file_bytes: &[u8],
-        section_table: &SectionTable,
-        optional_header: &super::optional_header::OptionalHeader,
-    ) -> Result<()> {
-        self.import_table = section_table.find_data_directory_data_map(
-            file_bytes,
-            &optional_header.data_directories.import_table,
-            |idata_bytes| {
-                idata::ImportTableDataDirectory::parse(
-                    file_bytes,
-                    idata_bytes,
-                    section_table,
-                    optional_header.standard_fields.magic,
-                )
-            },
-        )?;
         Ok(())
     }
 
@@ -459,38 +506,6 @@ impl SpecialSections {
             file_bytes,
             &optional_header.data_directories.resource_table,
             |rsrc_data| Ok(Vec::from(rsrc_data)),
-        )?;
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn parse_exception_table(
-        &mut self,
-        file_bytes: &[u8],
-        section_table: &SectionTable,
-        optional_header: &super::optional_header::OptionalHeader,
-        coff_header: &super::coff::CoffFileHeader,
-    ) -> Result<()> {
-        self.exception_table = section_table.find_data_directory_data_map(
-            file_bytes,
-            &optional_header.data_directories.exception_table,
-            |pdata_bytes| {
-                pdata::ExceptionHandlerDataDirectory::parse(pdata_bytes, coff_header.machine)
-            },
-        )?;
-        Ok(())
-    }
-
-    pub(crate) fn parse_certificate_table(
-        &mut self,
-        file_bytes: &[u8],
-        section_table: &SectionTable,
-        optional_header: &super::optional_header::OptionalHeader,
-    ) -> Result<()> {
-        self.certificate_table = section_table.find_data_directory_data_map(
-            file_bytes,
-            &optional_header.data_directories.certificate_table,
-            |cert_bytes| certificate::CertificateDataDirectory::parse(cert_bytes),
         )?;
         Ok(())
     }

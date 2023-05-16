@@ -2,7 +2,9 @@
 use crate::containers::Table;
 use crate::error::Result;
 use crate::io::ReadData;
-use crate::{vec::Vec};
+use crate::vec::Vec;
+
+use super::ParseSectionData;
 
 /// Attribute certificates can be associated with an image by adding an attribute certificate table.
 /// The attribute certificate table is composed of a set of contiguous, quadword-aligned attribute
@@ -13,8 +15,13 @@ pub struct CertificateDataDirectory {
     pub certificates: Table<Certificate>,
 }
 
-impl CertificateDataDirectory {
-    pub fn parse(section_data: &[u8]) -> Result<Self> {
+impl ParseSectionData for CertificateDataDirectory {
+    fn parse(
+        section_data: &[u8],
+        _: &super::Sections,
+        _: &crate::pe::optional_header::OptionalHeader,
+        _: &crate::pe::coff::CoffFileHeader,
+    ) -> Result<Self> {
         let mut offset = 0;
         let mut certificates = Table::new();
         loop {
@@ -47,7 +54,7 @@ impl CertificateType {
             0x0002 => Self::PkcsSignedData,
             0x0003 => Self::Reserved1,
             0x0004 => Self::TsStackSigned,
-            other => Self::Other(other)
+            other => Self::Other(other),
         }
     }
 }
@@ -63,7 +70,7 @@ impl Default for CertificateType {
 pub enum CertificateRevision {
     Revision1_0 = 0x0100,
     Revision2_0 = 0x0200,
-    Other(u16)
+    Other(u16),
 }
 
 impl CertificateRevision {
@@ -71,7 +78,7 @@ impl CertificateRevision {
         match val {
             0x0001 => Self::Revision1_0,
             0x0002 => Self::Revision2_0,
-            other => Self::Other(other)
+            other => Self::Other(other),
         }
     }
 }

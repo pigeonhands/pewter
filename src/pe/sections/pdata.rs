@@ -6,8 +6,10 @@
 use crate::{
     error::Result,
     io::{ReadData, WriteData},
-    pe::coff::ImageFileMachine,
+    pe::coff::{CoffFileHeader, ImageFileMachine},
 };
+
+use super::ParseSectionData;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub enum ExceptionHandlerDataDirectory {
@@ -18,10 +20,14 @@ pub enum ExceptionHandlerDataDirectory {
     X64(X64ExceptionHandlerTable),
 }
 
-impl ExceptionHandlerDataDirectory {
-    pub fn parse(section_data: &[u8], machine: ImageFileMachine) -> Result<Self> {
-        // I am unsure about these matches
-        let val = match machine {
+impl ParseSectionData for ExceptionHandlerDataDirectory {
+    fn parse(
+        section_data: &[u8],
+        _: &super::Sections,
+        _: &crate::pe::optional_header::OptionalHeader,
+        coff_header: &CoffFileHeader,
+    ) -> Result<Self> {
+        let val = match coff_header.machine {
             ImageFileMachine::MipsFPU | ImageFileMachine::R4000 => Self::Mips32(
                 Mips32ExceptionHandlerTable::read(&mut section_data.as_ref())?,
             ),
@@ -45,7 +51,7 @@ impl WriteData for &ExceptionHandlerDataDirectory {
             ExceptionHandlerDataDirectory::Mips32(exc) => writer.write(exc),
             ExceptionHandlerDataDirectory::ArmPowerPCSH4WindowsCE(exec) => writer.write(exec),
             ExceptionHandlerDataDirectory::X64(exec) => writer.write(exec),
-            _ => Ok(()),
+            ExceptionHandlerDataDirectory::Unsupported => Ok(()),
         }
     }
 }

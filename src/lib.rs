@@ -1,23 +1,21 @@
 #![no_std]
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 mod alloc_containers {
     pub extern crate std;
-    pub use std::{vec, string, error};
+    pub use std::{error, string, vec, borrow};
 }
-#[cfg(not(feature="std"))]
+#[cfg(not(feature = "std"))]
 mod alloc_containers {
     extern crate alloc;
-    pub use alloc::{vec, string};
+    pub use alloc::{string, vec, borrow};
 }
 
-pub (crate) use alloc_containers::*;
-
-
+pub(crate) use alloc_containers::*;
 
 pub mod containers;
 pub mod error;
 pub mod io;
 pub mod pe;
 
-pub use pe::{options::Options, PEFile, PEImage};
+pub use pe::{options::Options, PEFile};

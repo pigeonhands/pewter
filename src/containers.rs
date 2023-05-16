@@ -7,7 +7,6 @@ use crate::error::Result;
 use crate::io::ReadData;
 use crate::io::Reader;
 
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Table<T>(pub Vec<T>);
 

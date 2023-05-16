@@ -2,15 +2,18 @@
 //!
 //! All image files that import symbols, including virtually all executable (EXE) files,
 //! have an .idata section.
-use super::SectionTable;
+use super::{ParseSectionData, Sections};
 use crate::{
     containers::Table,
     error::{PewterError, Result},
     io::{ReadData, Reader, WriteData},
-    pe::optional_header::OptionalHeaderMagic,
+    pe::{
+        coff::CoffFileHeader,
+        optional_header::{OptionalHeader, OptionalHeaderMagic},
+    },
 };
 
-use crate::{vec::Vec, string::String};
+use crate::{string::String, vec::Vec};
 
 /// The import directory table contains address information that is used to resolve fixup
 /// references to the entry points within a DLL image. The import directory table consists of
@@ -23,19 +26,17 @@ pub struct ImportTableDataDirectory {
     /// directory entries, one entry for each DLL to which the image refers. The last directory entry is
     /// empty (filled with null values), which indicates the end of the directory table.
     pub entries: Table<ImportTableDataDirectoryEntry>,
-    /// True if parsed from PE32, false if PE32Plus
-    pub import_table_32_bit: bool,
 }
 
-impl ImportTableDataDirectory {
-    pub fn parse(
-        file_bytes: &[u8],
-        section_base: &[u8],
-        sections: &SectionTable,
-        magic: OptionalHeaderMagic,
+impl ParseSectionData for ImportTableDataDirectory {
+    fn parse(
+        section_data: &[u8],
+        sections: &super::Sections,
+        optional_header: &OptionalHeader,
+        _: &CoffFileHeader,
     ) -> Result<Self> {
         let entries = {
-            let mut import_lookup_table_ptr = section_base.as_ref();
+            let mut import_lookup_table_ptr = section_data.as_ref();
             let mut import_directory_tables = Vec::with_capacity(5);
             loop {
                 let dir: ImportDirectoryTable = import_lookup_table_ptr.read()?;
@@ -44,16 +45,15 @@ impl ImportTableDataDirectory {
                 }
 
                 import_directory_tables.push(ImportTableDataDirectoryEntry::parse(
-                    file_bytes, dir, sections, magic,
+                    dir,
+                    sections,
+                    optional_header.standard_fields.magic,
                 )?);
             }
             Table(import_directory_tables)
         };
 
-        Ok(Self {
-            entries,
-            import_table_32_bit: magic == OptionalHeaderMagic::PE32,
-        })
+        Ok(Self { entries })
     }
 }
 
@@ -77,16 +77,12 @@ pub struct ImportTableDataDirectoryEntry {
 
 impl ImportTableDataDirectoryEntry {
     pub fn parse(
-        file_bytes: &[u8],
         import_directory_table: ImportDirectoryTable,
-        sections: &SectionTable,
+        sections: &Sections,
         magic: OptionalHeaderMagic,
     ) -> Result<Self> {
         let import_lookup_table_data = sections
-            .find_rva_data(
-                file_bytes,
-                import_directory_table.import_lookup_table_rva as usize,
-            )
+            .find_rva_data(import_directory_table.import_lookup_table_rva as usize)
             .ok_or_else(|| {
                 PewterError::invalid_image_format(
                     "Failed to map import_lookup_table_rva inside image",
@@ -98,16 +94,12 @@ impl ImportTableDataDirectoryEntry {
             let mut lookup_items = Vec::new();
             loop {
                 let lookup_entry = match magic {
-                    OptionalHeaderMagic::PE32 => ImportTableRow::from_u32(
-                        file_bytes,
-                        sections,
-                        u32::read(&mut lookup_table_data_ptr)?,
-                    )?,
-                    OptionalHeaderMagic::PE32Plus => ImportTableRow::from_u64(
-                        file_bytes,
-                        sections,
-                        u64::read(&mut lookup_table_data_ptr)?,
-                    )?,
+                    OptionalHeaderMagic::PE32 => {
+                        ImportTableRow::from_u32(sections, u32::read(&mut lookup_table_data_ptr)?)?
+                    }
+                    OptionalHeaderMagic::PE32Plus => {
+                        ImportTableRow::from_u64(sections, u64::read(&mut lookup_table_data_ptr)?)?
+                    }
                 };
 
                 if let Some(lookup_entry) = lookup_entry {
@@ -121,7 +113,7 @@ impl ImportTableDataDirectoryEntry {
 
         let dll_name = {
             let dll_name_data = sections
-                .find_rva_data(file_bytes, import_directory_table.name_rva as usize)
+                .find_rva_data(import_directory_table.name_rva as usize)
                 .ok_or_else(|| {
                     PewterError::invalid_image_format(
                         "Failed to map import_directory_table.name_rva inside image",
@@ -209,8 +201,7 @@ impl ImportTableRow {
         matches!(self, Self::Ordinal(0))
     }
     fn from_lower_bits(
-        file_bytes: &[u8],
-        sections: &SectionTable,
+        sections: &Sections,
         import_by_ordinal: bool,
         rest_of_fields: u32,
     ) -> Result<Self> {
@@ -220,13 +211,9 @@ impl ImportTableRow {
 
         let name_rva = (rest_of_fields & 0x7F_FF_FF_FF) as u32;
 
-        let mut hint_rva_location = sections
-            .find_rva_data(file_bytes, name_rva as usize)
-            .ok_or_else(|| {
-                PewterError::invalid_image_format(
-                    "Failed to map \"Hint/Name Table RVA\" inside image",
-                )
-            })?;
+        let mut hint_rva_location = sections.find_rva_data(name_rva as usize).ok_or_else(|| {
+            PewterError::invalid_image_format("Failed to map \"Hint/Name Table RVA\" inside image")
+        })?;
 
         let hint = u16::read(&mut hint_rva_location)?;
         let str_pos = hint_rva_location.iter().position(|c| *c == 0).unwrap_or(0);
@@ -237,24 +224,24 @@ impl ImportTableRow {
         })
     }
 
-    pub fn from_u32(file_bytes: &[u8], sections: &SectionTable, val: u32) -> Result<Option<Self>> {
+    pub fn from_u32(sections: &Sections, val: u32) -> Result<Option<Self>> {
         const PE32_LOOKUP_TABLE_ORDINAL_MASK: u32 = 0x80000000;
         if val == 0 {
             return Ok(None);
         }
         let import_by_ordinal = (val & PE32_LOOKUP_TABLE_ORDINAL_MASK) != 0;
         let rest_of_fields = (val & !PE32_LOOKUP_TABLE_ORDINAL_MASK) as u32;
-        Self::from_lower_bits(file_bytes, sections, import_by_ordinal, rest_of_fields).map(Some)
+        Self::from_lower_bits(sections, import_by_ordinal, rest_of_fields).map(Some)
     }
 
-    pub fn from_u64(file_bytes: &[u8], sections: &SectionTable, val: u64) -> Result<Option<Self>> {
+    pub fn from_u64(sections: &Sections, val: u64) -> Result<Option<Self>> {
         const PE32_PLUS_LOOKUP_TABLE_ORDINAL_MASK: u64 = 0x8000000000000000;
         if val == 0 {
             return Ok(None);
         }
         let import_by_ordinal = (val & PE32_PLUS_LOOKUP_TABLE_ORDINAL_MASK) != 0;
         let rest_of_fields = (val & !PE32_PLUS_LOOKUP_TABLE_ORDINAL_MASK) as u32;
-        Self::from_lower_bits(file_bytes, sections, import_by_ordinal, rest_of_fields).map(Some)
+        Self::from_lower_bits(sections, import_by_ordinal, rest_of_fields).map(Some)
     }
 }
 

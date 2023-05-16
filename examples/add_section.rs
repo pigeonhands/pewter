@@ -8,15 +8,15 @@ fn main() {
 
     let data = std::fs::read(&current_exec).unwrap();
 
-    let pe = PEFile::parse(&data).unwrap();
+    let _pe = PEFile::parse(&data).unwrap();
 
-    if let Some(optional_header) = &pe.optional_header {
-        let section = pe
-            .section_table
-            .find_rva(optional_header.data_directories.import_table.virtual_address as usize)
-            .unwrap();
-        println!("Import table is in {} section", section.name_str());
-    }
+    // if let Some(optional_header) = &pe.optional_header {
+    //     let section = pe
+    //         .section_table
+    //         .find_rva(optional_header.data_directories.import_table.virtual_address as usize)
+    //         .unwrap();
+    //     println!("Import table is in {} section", section.name_str());
+    // }
 
     println!("Loaded {}", current_exec);
 }
