@@ -339,10 +339,10 @@ impl WriteData for &SectionTableRow {
 
 /// Sections with their ccorrisponding data
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct Sections(Table<SectionRow>);
+pub struct Sections<'a>(Table<SectionRow<'a>>);
 
-impl Sections {
-    pub fn parse(file_bytes: &[u8], section_table: SectionTable) -> Result<Self> {
+impl<'a> Sections<'a> {
+    pub fn parse(file_bytes: &'a [u8], section_table: SectionTable) -> Result<Self> {
         let SectionTable(Table(section_table_rows)) = section_table;
 
         let sections = section_table_rows
@@ -357,7 +357,7 @@ impl Sections {
                 });
                 bytes.map(|b| SectionRow {
                     row: section_row,
-                    data: Vec::from(b),
+                    data: b.into(),
                 })
             })
             .collect::<Result<_>>();
@@ -396,12 +396,12 @@ impl Sections {
 }
 
 #[derive(Default, Clone, PartialEq)]
-pub struct SectionRow {
+pub struct SectionRow<'a> {
     pub row: SectionTableRow,
-    pub data: Vec<u8>,
+    pub data: crate::borrow::Cow<'a, [u8]>,
 }
 
-impl SectionRow {
+impl<'a> SectionRow<'a> {
     pub fn get_data_range(&self, virtual_address: usize) -> (usize, usize) {
         let section_offset = virtual_address - self.row.virtual_address as usize;
         let section_start = self.row.pointer_to_raw_data as usize + section_offset;
@@ -416,7 +416,7 @@ impl SectionRow {
     }
 }
 
-impl Debug for SectionRow {
+impl<'a> Debug for SectionRow<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SectionRow")
             .field("row", &self.row)
