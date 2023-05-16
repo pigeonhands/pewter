@@ -8,11 +8,12 @@ use crate::{
     containers::Table,
     error::{PewterError, Result},
     io::{ReadData, WriteData},
+    pe::{coff::CoffFileHeader, optional_header::OptionalHeader},
 };
 
-use super::SectionTable;
+use super::ParseSectionData;
 
-use crate::{vec::Vec, string::String};
+use crate::{string::String, vec::Vec};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ExportTableDataDirectory {
@@ -37,15 +38,17 @@ pub struct ExportTableDataDirectory {
     pub export_name_table: Table<String>,
 }
 
-impl ExportTableDataDirectory {
-    pub fn parse(file_bytes: &[u8], section_base: &[u8], sections: &SectionTable) -> Result<Self> {
-        let export_directory_table = ExportDirectory::read(&mut section_base.as_ref())?;
+impl ParseSectionData for ExportTableDataDirectory {
+    fn parse(
+        section_data: &[u8],
+        sections: &super::Sections,
+        _: &OptionalHeader,
+        _: &CoffFileHeader,
+    ) -> Result<Self> {
+        let export_directory_table = ExportDirectory::read(&mut section_data.as_ref())?;
 
         let export_address_table_data = sections
-            .find_rva_data(
-                file_bytes,
-                export_directory_table.export_address_table as usize,
-            )
+            .find_rva_data(export_directory_table.export_address_table as usize)
             .ok_or_else(|| {
                 PewterError::invalid_image_format(
                     "Failed to map export_address_table_data inside image",
@@ -53,10 +56,7 @@ impl ExportTableDataDirectory {
             })?;
 
         let name_pointer_table_data = sections
-            .find_rva_data(
-                file_bytes,
-                export_directory_table.export_address_table as usize,
-            )
+            .find_rva_data(export_directory_table.export_address_table as usize)
             .ok_or_else(|| {
                 PewterError::invalid_image_format(
                     "Failed to map name_pointer_table_data inside image",
@@ -64,10 +64,7 @@ impl ExportTableDataDirectory {
             })?;
 
         let export_ordinal_table_data = sections
-            .find_rva_data(
-                file_bytes,
-                export_directory_table.export_address_table as usize,
-            )
+            .find_rva_data(export_directory_table.export_address_table as usize)
             .ok_or_else(|| {
                 PewterError::invalid_image_format(
                     "Failed to map export_ordinal_table_data inside image",
@@ -75,7 +72,7 @@ impl ExportTableDataDirectory {
             })?;
 
         let export_name_data = sections
-            .find_rva_data(file_bytes, export_directory_table.name_rva as usize)
+            .find_rva_data(export_directory_table.name_rva as usize)
             .ok_or_else(|| {
                 PewterError::invalid_image_format(
                     "Failed to map export_ordinal_table_data inside image",

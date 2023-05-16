@@ -1,6 +1,5 @@
-#[cfg(feature="std")]
-use crate::alloc_containers::{error::Error};
-
+#[cfg(feature = "std")]
+use crate::alloc_containers::error::Error;
 
 pub type Result<T> = core::result::Result<T, PewterError>;
 
@@ -10,7 +9,6 @@ pub enum PewterError {
     NotEnoughSpaceLeft { attempted_write: usize },
     InvalidImageFormat { message: &'static str },
 }
-
 
 impl PewterError {
     #[cold]
@@ -35,13 +33,21 @@ impl core::fmt::Display for PewterError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::InvalidImageFormat { message } => write!(f, "Invalid image format: {}", message),
-            Self::NotEnoughDataLeft { attempted_read } => write!(f, "Attempted to read {} bytes but there was not enough data.", attempted_read),
-            Self::NotEnoughSpaceLeft { attempted_write } => write!(f, "Attempted to write {} bytes but there was not enough space.", attempted_write),
+            Self::NotEnoughDataLeft { attempted_read } => write!(
+                f,
+                "Attempted to read {} bytes but there was not enough data.",
+                attempted_read
+            ),
+            Self::NotEnoughSpaceLeft { attempted_write } => write!(
+                f,
+                "Attempted to write {} bytes but there was not enough space.",
+                attempted_write
+            ),
         }
     }
 }
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 impl Error for PewterError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None

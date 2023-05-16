@@ -225,7 +225,7 @@ bitflags! {
         const DYNAMIC_BASE = 0x0040;
         /// Code Integrity checks are enforced.
         const FORCE_INTEGRITY = 0x0080;
-        /// Image is NX compatible. 
+        /// Image is NX compatible.
         const NX_COMPAT  = 0x0100;
         /// Isolation aware, but do not isolate the image.
         const NO_ISOLATION = 0x0200;
@@ -841,7 +841,7 @@ mod tests {
 
     #[test]
     fn opttional_header_magic_is_2_bytes() {
-        let buffer : [u8; OptionalHeaderMagic::SIZE] = 0x10B_u16.to_le_bytes();
+        let buffer: [u8; OptionalHeaderMagic::SIZE] = 0x10B_u16.to_le_bytes();
         let read_ptr = &mut buffer.as_slice();
         OptionalHeaderMagic::read(read_ptr).unwrap();
         assert!(read_ptr.is_empty());

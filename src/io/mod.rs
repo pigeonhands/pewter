@@ -53,7 +53,6 @@ impl<'a> Writer for crate::vec::Vec<u8> {
     }
 }
 
-
 pub trait ReadData: Sized {
     fn read(reader: &mut impl Reader) -> Result<Self>;
 }

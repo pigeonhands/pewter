@@ -13,5 +13,18 @@
 //! The first table determines Type ID, the second table (pointed to by the directory entry in the first table)
 //! determines Name ID, and the third table determines Language ID.
 
+use super::ParseSectionData;
+
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ResourceDataDirectory {}
+pub struct ResourceDataDirectory(crate::vec::Vec<u8>);
+
+impl ParseSectionData for ResourceDataDirectory {
+    fn parse(
+        section_data: &[u8],
+        _: &super::Sections,
+        _: &crate::pe::optional_header::OptionalHeader,
+        _: &crate::pe::coff::CoffFileHeader,
+    ) -> crate::error::Result<Self> {
+        Ok(Self(crate::vec::Vec::from(section_data)))
+    }
+}

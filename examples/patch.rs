@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 
-use pewter::pe::{PEFile};
+use pewter::pe::PEFile;
 
 fn main() {
     let current_exec = PathBuf::from(env::args().next().unwrap());
@@ -16,10 +16,7 @@ fn main() {
     pe_file.patch(&mut data).unwrap();
     let patched_pe_file = PEFile::parse_minimal(&data).unwrap();
 
-    assert_eq!(
-        patched_pe_file,
-        pe_file
-    );
+    assert_eq!(patched_pe_file, pe_file);
 
     // current_exec.set_extension("patched.exe");
     // std::fs::write(&current_exec, &data).unwrap();

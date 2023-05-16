@@ -11,13 +11,20 @@ use crate::{
     io::{ReadData, WriteData},
 };
 
+use super::ParseSectionData;
+
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct BaseRelocationDataDitectory {
     pub relocations: Table<BaseRelocationBlockHeader>,
 }
 
-impl BaseRelocationDataDitectory {
-    pub fn parse(section_data: &[u8]) -> Result<Self> {
+impl ParseSectionData for BaseRelocationDataDitectory {
+    fn parse(
+        section_data: &[u8],
+        _: &super::Sections,
+        _: &crate::pe::optional_header::OptionalHeader,
+        _: &crate::pe::coff::CoffFileHeader,
+    ) -> Result<Self> {
         let mut data_ptr = section_data;
         let mut relocations = Table::new();
         while !data_ptr.is_empty() {
