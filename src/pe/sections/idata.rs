@@ -36,7 +36,7 @@ impl ParseSectionData for ImportTableDataDirectory {
         _: &CoffFileHeader,
     ) -> Result<Self> {
         let entries = {
-            let mut import_lookup_table_ptr = section_data.as_ref();
+            let mut import_lookup_table_ptr = section_data;
             let mut import_directory_tables = Vec::with_capacity(5);
             loop {
                 let dir: ImportDirectoryTable = import_lookup_table_ptr.read()?;
@@ -209,7 +209,7 @@ impl ImportTableRow {
             return Ok(ImportTableRow::Ordinal((rest_of_fields & 0xFF_FF) as u16));
         }
 
-        let name_rva = (rest_of_fields & 0x7F_FF_FF_FF) as u32;
+        let name_rva = rest_of_fields & 0x7F_FF_FF_FF;
 
         let mut hint_rva_location = sections.find_rva_data(name_rva as usize).ok_or_else(|| {
             PewterError::invalid_image_format("Failed to map \"Hint/Name Table RVA\" inside image")
@@ -230,7 +230,7 @@ impl ImportTableRow {
             return Ok(None);
         }
         let import_by_ordinal = (val & PE32_LOOKUP_TABLE_ORDINAL_MASK) != 0;
-        let rest_of_fields = (val & !PE32_LOOKUP_TABLE_ORDINAL_MASK) as u32;
+        let rest_of_fields = val & !PE32_LOOKUP_TABLE_ORDINAL_MASK;
         Self::from_lower_bits(sections, import_by_ordinal, rest_of_fields).map(Some)
     }
 

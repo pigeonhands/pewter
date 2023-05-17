@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::useless_asref)]
 
 #[cfg(feature = "std")]
 mod alloc_containers {

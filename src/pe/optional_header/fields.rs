@@ -50,7 +50,7 @@ impl OptionalHeaderMagic {
 
 impl ReadData for OptionalHeaderMagic {
     fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
-        Ok(Self::from_u16(reader.read()?)?)
+        Self::from_u16(reader.read()?)
     }
 }
 
@@ -440,7 +440,7 @@ impl OptionalHeaderWindowsSpecific {
     pub fn image_base(&self) -> u64 {
         match self {
             Self::PE32(pe32) => pe32.image_base as u64,
-            Self::PE32Plus(pe32) => pe32.image_base as u64,
+            Self::PE32Plus(pe32) => pe32.image_base,
         }
     }
     /// sets [image_base](OptionalHeaderWindowsSpecificFields::image_base)
@@ -449,7 +449,7 @@ impl OptionalHeaderWindowsSpecific {
     pub fn set_image_base(&mut self, value: u64) {
         match self {
             Self::PE32(pe32) => pe32.image_base = value as u32,
-            Self::PE32Plus(pe32) => pe32.image_base = value as u64,
+            Self::PE32Plus(pe32) => pe32.image_base = value,
         };
     }
 

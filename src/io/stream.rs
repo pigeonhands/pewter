@@ -1,3 +1,5 @@
+use core::mem::MaybeUninit;
+
 use crate::{
     error::{PewterError, Result},
     io::{Reader, Writer},
@@ -43,7 +45,7 @@ impl Writer for PEStream<&mut [u8]> {
         if self.position + data.len() > self.buffer.len() {
             return Err(PewterError::not_enough_space(data.len()));
         }
-        self.buffer.as_mut()[self.position..self.position + data.len()].copy_from_slice(data);
+        self.buffer[self.position..self.position + data.len()].copy_from_slice(data);
         self.position += data.len();
         Ok(())
     }
@@ -51,10 +53,20 @@ impl Writer for PEStream<&mut [u8]> {
 
 impl Writer for PEStream<Vec<u8>> {
     fn write_slice(&mut self, data: &[u8]) -> Result<()> {
+
+
         let end_pos = self.position + data.len();
         if self.buffer.len() < end_pos {
-            self.buffer.reserve(data.len() - self.buffer.capacity());
-            unsafe { self.buffer.set_len(end_pos) };
+            let mut buffer : Vec<MaybeUninit<u8>> = {
+                let buffer = core::mem::take(&mut self.buffer);
+                unsafe { core::mem::transmute(buffer) }
+            };
+            buffer.reserve(data.len() - self.buffer.capacity());
+            unsafe { 
+                self.buffer.set_len(end_pos);
+                let buffer : Vec<u8> = core::mem::transmute(buffer);
+                let _ = core::mem::replace(&mut self.buffer, buffer);
+            };
         }
         self.buffer[self.position..self.position + data.len()].copy_from_slice(data);
         Ok(())

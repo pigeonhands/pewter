@@ -84,8 +84,8 @@ impl<'a> PEFile<'a> {
             .map(|optional_header| {
                 let data_dir = data_dir_fn(&optional_header.data_directories);
                 self.sections
-                    .find_data_directory_data_map(&data_dir, |data| {
-                        T::parse(data, &self.sections, &optional_header, &self.coff_header)
+                    .find_data_directory_data_map(data_dir, |data| {
+                        T::parse(data, &self.sections, optional_header, &self.coff_header)
                     })
             })
             .transpose()

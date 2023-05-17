@@ -27,17 +27,18 @@ impl ParseSectionData for ExceptionHandlerDataDirectory {
         _: &crate::pe::optional_header::OptionalHeader,
         coff_header: &CoffFileHeader,
     ) -> Result<Self> {
+        let mut reader = section_data;
         let val = match coff_header.machine {
             ImageFileMachine::MipsFPU | ImageFileMachine::R4000 => Self::Mips32(
-                Mips32ExceptionHandlerTable::read(&mut section_data.as_ref())?,
+                Mips32ExceptionHandlerTable::read(&mut reader)?,
             ),
             ImageFileMachine::Arm | ImageFileMachine::PowerPC | ImageFileMachine::PowerPCFP => {
                 Self::ArmPowerPCSH4WindowsCE(ArmPowerPCSH4WindowsCEExceptionHandlerTable::read(
-                    &mut section_data.as_ref(),
+                    &mut reader,
                 )?)
             }
             ImageFileMachine::Arm64 | ImageFileMachine::RiscV64 | ImageFileMachine::Amd64 => {
-                Self::X64(X64ExceptionHandlerTable::read(&mut section_data.as_ref())?)
+                Self::X64(X64ExceptionHandlerTable::read(&mut reader)?)
             }
             _ => Self::Unsupported,
         };
@@ -151,7 +152,7 @@ impl WriteData for &ArmPowerPCSH4WindowsCEExceptionHandlerTable {
 
         let mut other_fields = 0;
         other_fields |= (self.prolog_length as u32) << 24;
-        other_fields |= (self.function_length as u32) << 2;
+        other_fields |= (self.function_length) << 2;
         other_fields |= match self.instruction_length {
             ExceptionHandlerInstructionLength::Is16Bit => 0,
             ExceptionHandlerInstructionLength::Is32Bit => 1u32 << 1,

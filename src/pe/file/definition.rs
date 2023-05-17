@@ -243,7 +243,7 @@ impl PEImageDef {
             while buffer.len() < sec.pointer_to_raw_data as usize {
                 buffer.write(0u8)?;
             }
-            buffer.write_slice(&sec_data)?;
+            buffer.write_slice(sec_data)?;
         }
 
         Ok(buffer)
@@ -286,7 +286,7 @@ impl SectionDefinitions {
     }
 
     /// Iters all sections that have a non-zero `virtual_address`.
-    pub fn iter_sections<'a>(&'a self) -> impl Iterator<Item = &SectionHeap> + 'a {
+    pub fn iter_sections(&self) -> impl Iterator<Item = &SectionHeap> {
         [&self.text, &self.rdata, &self.data,&self.pdata, &self.reloc]
             .into_iter()
             .flat_map(|f| f.as_ref())
@@ -306,7 +306,7 @@ impl SectionDefinitions {
         }
         self.iter_sections().find(|heap| {
             virtual_address >= (heap.virtual_address as usize)
-                && virtual_address < (heap.virtual_address as usize + heap.data.len() as usize)
+                && virtual_address < (heap.virtual_address as usize + heap.data.len())
         })
     }
 

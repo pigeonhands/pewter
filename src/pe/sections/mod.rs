@@ -15,7 +15,6 @@ use core::ops::{Deref, DerefMut};
 use super::coff::CoffFileHeader;
 use super::optional_header::data_directories::ImageDataDirectory;
 use super::optional_header::OptionalHeader;
-use super::options::ParseSectionFlags;
 
 use crate::vec::Vec;
 
@@ -46,13 +45,7 @@ impl SectionTable {
             *b = *n;
         }
 
-        for section in self.iter() {
-            if section.name == check_name_buffer {
-                return Some(section);
-            }
-        }
-
-        None
+        self.iter().find(|section| section.name == check_name_buffer)
     }
 
     #[inline(always)]
@@ -358,7 +351,7 @@ impl<'a> Sections<'a> {
                 });
                 bytes.map(|b| SectionRow {
                     row: section_row,
-                    data: b.into(),
+                    data: b,
                 })
             })
             .collect::<Result<_>>();
@@ -455,63 +448,6 @@ pub struct SpecialSections {
     pub relocation_table: Option<base_relocation::BaseRelocationDataDitectory>,
 }
 
-impl SpecialSections {
-    pub fn parse(
-        file_bytes: &[u8],
-        coff_header: &super::coff::CoffFileHeader,
-        optional_header: &super::optional_header::OptionalHeader,
-        section_table: &SectionTable,
-        parse_sections: ParseSectionFlags,
-    ) -> Result<Self> {
-        let mut sections = Self::default();
-
-        if parse_sections != ParseSectionFlags::NONE {
-            sections.parse_tables(
-                file_bytes,
-                coff_header,
-                optional_header,
-                section_table,
-                parse_sections,
-            )?;
-        }
-
-        Ok(sections)
-    }
-
-    pub fn parse_tables(
-        &mut self,
-        file_bytes: &[u8],
-        _: &super::coff::CoffFileHeader,
-        optional_header: &super::optional_header::OptionalHeader,
-        section_table: &SectionTable,
-        parse_sections: ParseSectionFlags,
-    ) -> Result<()> {
-        for section in parse_sections.iter() {
-            match section {
-                ParseSectionFlags::RESOURCE_TABLE => {
-                    self.parse_resource_table(file_bytes, section_table, optional_header)?
-                }
-                _ => {}
-            };
-        }
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn parse_resource_table(
-        &mut self,
-        file_bytes: &[u8],
-        section_table: &SectionTable,
-        optional_header: &super::optional_header::OptionalHeader,
-    ) -> Result<()> {
-        self.resource_table = section_table.find_data_directory_data_map(
-            file_bytes,
-            &optional_header.data_directories.resource_table,
-            |rsrc_data| Ok(Vec::from(rsrc_data)),
-        )?;
-        Ok(())
-    }
-}
 
 #[cfg(test)]
 mod tests {

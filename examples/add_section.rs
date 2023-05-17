@@ -32,8 +32,8 @@ fn main() {
         let pe = PEFile::parse(&pacthed_data).unwrap();
        println!("{:#?}", pe);
 
-       current_exec.set_extension("patched-no-section.exe");
-       //std::fs::write(&current_exec, &pacthed_data).unwrap();
+       current_exec.set_extension("patched.exe");
+       std::fs::write(&current_exec, &pacthed_data).unwrap();
        println!("Patched self {}", current_exec.display());
 
 
