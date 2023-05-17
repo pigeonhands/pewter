@@ -1,6 +1,6 @@
-use std::{env, path::{Path, PathBuf}};
+use std::{env, path::{PathBuf}};
 
-use pewter::pe::{PEFile, definition::PEImageDef, sections::{SectionFlags, SectionTableRow}, optional_header::data_directories::ImageDataDirectory};
+use pewter::pe::{PEFile, definition::PEImageDef, sections::{SectionFlags}, optional_header::data_directories::ImageDataDirectory};
 
 fn main() {
     let mut args = env::args();
@@ -8,7 +8,6 @@ fn main() {
     let mut current_exec = PathBuf::from(args.next().unwrap());
     current_exec.set_file_name("simple.exe");
     let arg = args.next().unwrap_or_default();
-    //let current_exec = r#""C:\re\dnspy\bin\dnlib.dll"#;
 
     let data = std::fs::read(&current_exec).unwrap();
 

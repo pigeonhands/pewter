@@ -120,8 +120,7 @@ impl PEImageDef {
                     .number_of_rva_and_sizes()
                     .max(number_of_data_directories),
             );
-        return;
-
+/*
         if let Some(init_data) = &self.sections.data {
             self.optional_header.standard_fields.size_of_initilized_data = self
                 .optional_header
@@ -136,7 +135,7 @@ impl PEImageDef {
                 .standard_fields
                 .size_of_code
                 .max(code.data.len() as u32);
-        }
+        } */
     }
 
     pub fn output_size(&self) -> usize {
