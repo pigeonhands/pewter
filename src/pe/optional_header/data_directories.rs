@@ -139,6 +139,11 @@ pub struct ImageDataDirectory {
 
 impl ImageDataDirectory {
     pub const SIZE: usize = 8;
+
+    pub fn is_null(&self) -> bool {
+        self.virtual_address == 0 &&
+            self.size == 0
+    }
 }
 
 impl ReadData for ImageDataDirectory {

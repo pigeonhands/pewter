@@ -75,6 +75,10 @@ impl<'a> PEFile<'a> {
         })
     }
 
+    pub fn into_owned(self) -> PEFile<'static> {
+        PEFile { dos_header: self.dos_header, coff_header: self.coff_header, optional_header: self.optional_header, sections: self.sections.into_owned() }
+    }
+
     fn read_section_data<T: ParseSectionData>(
         &self,
         data_dir_fn: impl FnOnce(&DataDirectories) -> &ImageDataDirectory,

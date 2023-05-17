@@ -1,14 +1,47 @@
-use std::env;
+use std::{env, path::{Path, PathBuf}};
 
-use pewter::pe::PEFile;
+use pewter::pe::{PEFile, definition::PEImageDef, sections::{SectionFlags, SectionTableRow}, optional_header::data_directories::ImageDataDirectory};
 
 fn main() {
-    let current_exec = env::args().next().unwrap();
+    let mut args = env::args();
+
+    let mut current_exec = PathBuf::from(args.next().unwrap());
+    current_exec.set_file_name("simple.exe");
+    let arg = args.next().unwrap_or_default();
     //let current_exec = r#""C:\re\dnspy\bin\dnlib.dll"#;
 
     let data = std::fs::read(&current_exec).unwrap();
 
-    let _pe = PEFile::parse(&data).unwrap();
+    let pe = PEFile::parse(&data).unwrap();
+
+    if &arg == "patch" {
+        let mut def = PEImageDef::from_pe_file(pe);
+       
+        let dotnet_vaddr = {
+            let new_section = def.new_section(".net", SectionFlags::MEM_READ | SectionFlags::CNT_INITIALIZED_DATA);
+            new_section.virtual_size = 0x1000;
+            new_section.add_data(&[1,2,3,4,5])
+        };
+         
+        def.optional_header.data_directories.clr_runtime_header = ImageDataDirectory {
+            virtual_address: dotnet_vaddr as u32,
+            size: 6,
+        };  
+        
+        let pacthed_data = def.write_file().unwrap();
+
+        let pe = PEFile::parse(&pacthed_data).unwrap();
+       println!("{:#?}", pe);
+
+       current_exec.set_extension("patched-no-section.exe");
+       //std::fs::write(&current_exec, &pacthed_data).unwrap();
+       println!("Patched self {}", current_exec.display());
+
+
+    }else{
+        println!("{:#?}", pe);
+        println!("Loaded self (did not patch)")
+    }
 
     // if let Some(optional_header) = &pe.optional_header {
     //     let section = pe
@@ -18,5 +51,4 @@ fn main() {
     //     println!("Import table is in {} section", section.name_str());
     // }
 
-    println!("Loaded {}", current_exec);
 }

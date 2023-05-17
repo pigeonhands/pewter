@@ -7,6 +7,7 @@ pub mod rsrc;
 use crate::containers::Table;
 use crate::error::{PewterError, Result};
 use crate::io::{ReadData, WriteData};
+use crate::borrow::{Cow};
 use bitflags::bitflags;
 use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
@@ -264,7 +265,7 @@ pub struct SectionTableRow {
     /// for an image because COFF debugging information is deprecated.
     pub number_of_line_numbers: u16,
     /// The flags that describe the characteristics of the section.
-    pub characteristiics: SectionFlags,
+    pub characteristics: SectionFlags,
 }
 
 impl SectionTableRow {
@@ -316,7 +317,7 @@ impl ReadData for SectionTableRow {
             pointer_to_line_numbers: reader.read()?,
             number_of_relocaions: reader.read()?,
             number_of_line_numbers: reader.read()?,
-            characteristiics: SectionFlags::from_bits_retain(reader.read()?),
+            characteristics: SectionFlags::from_bits_retain(reader.read()?),
         })
     }
 }
@@ -332,14 +333,14 @@ impl WriteData for &SectionTableRow {
         writer.write(self.pointer_to_line_numbers)?;
         writer.write(self.number_of_relocaions)?;
         writer.write(self.number_of_line_numbers)?;
-        writer.write(self.characteristiics.bits())?;
+        writer.write(self.characteristics.bits())?;
         Ok(())
     }
 }
 
 /// Sections with their ccorrisponding data
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct Sections<'a>(Table<SectionRow<'a>>);
+pub struct Sections<'a>(pub Table<SectionRow<'a>>);
 
 impl<'a> Sections<'a> {
     pub fn parse(file_bytes: &'a [u8], section_table: SectionTable) -> Result<Self> {
@@ -362,6 +363,16 @@ impl<'a> Sections<'a> {
             })
             .collect::<Result<_>>();
         sections.map(|s| Self(Table(s)))
+    }
+
+    pub fn into_owned(self) -> Sections<'static> {
+        let Self(Table(section_rows)) = self;
+        let owned_table = section_rows.into_iter().map(|s| SectionRow{
+            row: s.row.clone(),
+            data: Cow::Owned(s.data.into_owned())
+        });
+
+        Sections(Table(owned_table.collect()))
     }
 
     #[inline(always)]
