@@ -4,10 +4,10 @@ pub mod edata;
 pub mod idata;
 pub mod pdata;
 pub mod rsrc;
+pub mod cor20;
 use crate::containers::Table;
 use crate::error::{PewterError, Result};
 use crate::io::{ReadData, WriteData};
-use crate::borrow::{Cow};
 use bitflags::bitflags;
 use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
@@ -365,18 +365,9 @@ impl<'a> Sections<'a> {
         sections.map(|s| Self(Table(s)))
     }
 
-    pub fn into_owned(self) -> Sections<'static> {
-        let Self(Table(section_rows)) = self;
-        let owned_table = section_rows.into_iter().map(|s| SectionRow{
-            row: s.row.clone(),
-            data: Cow::Owned(s.data.into_owned())
-        });
-
-        Sections(Table(owned_table.collect()))
-    }
 
     #[inline(always)]
-    pub fn find_rva(&self, virtual_address: usize) -> Option<&SectionRow> {
+    pub fn find_rva(&self, virtual_address: usize) -> Option<&SectionRow<'a>> {
         if virtual_address == 0 {
             return None;
         }
@@ -388,7 +379,7 @@ impl<'a> Sections<'a> {
     }
 
     #[inline(always)]
-    pub fn find_rva_data(&self, virtual_address: usize) -> Option<&[u8]> {
+    pub fn find_rva_data(&self, virtual_address: usize) -> Option<&'a [u8]> {
         self.find_rva(virtual_address)
             .map(|section| section.get_data(virtual_address))
     }
@@ -409,7 +400,7 @@ impl<'a> Sections<'a> {
 #[derive(Default, Clone, PartialEq)]
 pub struct SectionRow<'a> {
     pub row: SectionTableRow,
-    pub data: crate::borrow::Cow<'a, [u8]>,
+    pub data: &'a [u8],
 }
 
 impl<'a> SectionRow<'a> {
@@ -421,9 +412,9 @@ impl<'a> SectionRow<'a> {
         (section_start, section_end)
     }
 
-    pub fn get_data(&self, virtual_address: usize) -> &[u8] {
-        let (section_start, section_end) = self.get_data_range(virtual_address);
-        &self.data[section_start..section_end]
+    pub fn get_data(&self, virtual_address: usize) -> &'a [u8] {
+        let section_offset = virtual_address - self.row.virtual_address as usize;
+        &self.data[section_offset..]
     }
 }
 

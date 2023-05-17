@@ -28,13 +28,13 @@ impl PEImageDef {
             optional_header,
             sections,
             ..
-        } = pe_file.into_owned();
+        } = pe_file;
 
         let sections = {
             let Sections(Table(section_rows)) = sections;
 
             let mapped_sections = section_rows.into_iter().map(|s| SectionHeap {
-                data: s.data.into_owned(),
+                data: Vec::from(s.data),
                 name: s.row.name_str().into(),
                 characteristics: s.row.characteristics,
                 virtual_address: s.row.virtual_address,

@@ -10,7 +10,7 @@ use crate::pe::{coff, dos, optional_header, options::Options, sections::SectionT
 use super::{
     optional_header::data_directories::{DataDirectories, ImageDataDirectory},
     sections::{
-        base_relocation, certificate, edata, idata, pdata, rsrc, ParseSectionData, Sections,
+        base_relocation, certificate, edata, idata, pdata, rsrc,cor20, ParseSectionData, Sections,
     },
 };
 
@@ -75,10 +75,6 @@ impl<'a> PEFile<'a> {
         })
     }
 
-    pub fn into_owned(self) -> PEFile<'static> {
-        PEFile { dos_header: self.dos_header, coff_header: self.coff_header, optional_header: self.optional_header, sections: self.sections.into_owned() }
-    }
-
     fn read_section_data<T: ParseSectionData>(
         &self,
         data_dir_fn: impl FnOnce(&DataDirectories) -> &ImageDataDirectory,
@@ -126,5 +122,12 @@ impl<'a> PEFile<'a> {
         &self,
     ) -> Result<Option<base_relocation::BaseRelocationDataDitectory>> {
         self.read_section_data(|dirs| &dirs.base_relocation_table)
+    }
+
+    #[inline(always)]
+    pub fn read_clr_runtime_header(
+        &self,
+    ) -> Result<Option<cor20::ImageCor20Header>> {
+        self.read_section_data(|dirs| &dirs.clr_runtime_header)
     }
 }
