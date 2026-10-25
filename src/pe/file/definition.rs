@@ -7,7 +7,7 @@ use crate::{
     error::{PewterError, Result},
     io::{WriteData, Writer},
     pe::{
-        coff::CoffFileHeader,
+        coff::{CoffFileHeader, ImageFileCharacteristics, ImageFileMachine},
         dos::ImageDosHeader,
         optional_header::{
             self,
@@ -41,9 +41,46 @@ pub struct PEImageDef {
     pub overlay: Vec<u8>,
     overlay_offset: usize,
     first_raw_offset: usize,
+    created: bool,
 }
 
+const DOS_STUB: [u8; 64] = *b"\x0e\x1f\xba\x0e\x00\xb4\x09\xcd\x21\xb8\x01\x4c\xcd\x21This program cannot be run in DOS mode.\r\r\n$\0\0\0\0\0\0\0";
+
 impl PEImageDef {
+    /// A new image with no sections.
+    pub fn new(
+        machine: ImageFileMachine,
+        characteristics: ImageFileCharacteristics,
+        optional_header: optional_header::OptionalHeader,
+    ) -> Self {
+        let dos_header = ImageDosHeader {
+            e_magic: ImageDosHeader::MAGIC_CONSTANT,
+            e_cblp: 0x90,
+            e_cp: 3,
+            e_cparhdr: 4,
+            e_maxalloc: 0xFFFF,
+            e_sp: 0xB8,
+            e_lfarlc: 0x40,
+            e_lfanew: (ImageDosHeader::SIZE + DOS_STUB.len()) as u32,
+            ..Default::default()
+        };
+        Self {
+            dos_header,
+            dos_stub: DOS_STUB.to_vec(),
+            coff_header: CoffFileHeader {
+                machine,
+                characteristics,
+                ..Default::default()
+            },
+            optional_header,
+            sections: SectionDefinitions::default(),
+            overlay: Vec::new(),
+            overlay_offset: 0,
+            first_raw_offset: 0,
+            created: true,
+        }
+    }
+
     pub fn parse(data: &[u8]) -> Result<Self> {
         PEFile::parse_minimal(data).map(Self::from_pe_file)
     }
@@ -104,6 +141,7 @@ impl PEImageDef {
             overlay: Vec::from(&file_bytes[overlay_offset..]),
             overlay_offset,
             first_raw_offset,
+            created: false,
         }
     }
 
@@ -125,9 +163,17 @@ impl PEImageDef {
         name: impl Into<String>,
         characteristics: SectionFlags,
     ) -> &mut SectionHeap {
+        let after_headers = align_up(
+            self.headers_size() + SectionTableRow::SIZE,
+            self.section_alignment(),
+        );
+        let virtual_address = self
+            .sections
+            .next_virtual_address(self.section_alignment())
+            .max(after_headers);
         let section = SectionHeap {
             name: name.into(),
-            virtual_address: self.sections.next_virtual_address(self.section_alignment()) as u32,
+            virtual_address: virtual_address as u32,
             data: Vec::new(),
             characteristics,
             virtual_size: 0,
@@ -230,7 +276,21 @@ impl PEImageDef {
                 uninit += align_up(s.virtual_size(), file_alignment) as u32;
             }
         }
+        let first_with = |flag: SectionFlags| {
+            self.sections
+                .iter()
+                .find(|s| s.characteristics.contains(flag))
+                .map_or(0, |s| s.virtual_address)
+        };
+        let base_of_code = first_with(SectionFlags::CNT_CODE);
+        let base_of_data = first_with(SectionFlags::CNT_INITIALIZED_DATA);
         let std = &mut self.optional_header.standard_fields;
+        if self.created {
+            std.base_of_code = base_of_code;
+            if std.base_of_data.is_some() {
+                std.base_of_data = Some(base_of_data);
+            }
+        }
         std.size_of_code = code;
         std.size_of_initilized_data = init;
         std.size_of_unitilized_data = uninit;

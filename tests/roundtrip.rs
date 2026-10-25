@@ -103,3 +103,30 @@ fn cor20_header_round_trips_in_place() {
     assert!(def.write_file().unwrap() == sample);
 }
 
+
+#[test]
+fn new_image_from_scratch() {
+    use pewter::pe::{
+        coff::{ImageFileCharacteristics, ImageFileMachine},
+        optional_header::{ImageSubsystem, OptionalHeader},
+    };
+
+    let mut def = PEImageDef::new(
+        ImageFileMachine::I386,
+        ImageFileCharacteristics::EXECUTABLE_IMAGE | ImageFileCharacteristics::FILE_DLL,
+        OptionalHeader::new_pe32(ImageSubsystem::WindowsCui, 0x1000_0000),
+    );
+    let rva = def
+        .new_section(".text", SectionFlags::CNT_CODE | SectionFlags::MEM_EXECUTE | SectionFlags::MEM_READ)
+        .add_data(b"code");
+    assert_eq!(rva, 0x2000);
+
+    let written = def.write_file().unwrap();
+    assert!(written.windows(39).any(|w| w == b"This program cannot be run in DOS mode."));
+    let pe = PEFile::parse(&written).unwrap();
+    assert_eq!(pe.coff_header.machine, ImageFileMachine::I386);
+    let header = pe.optional_header.as_ref().unwrap();
+    assert_eq!(header.windows_specific_fields.size_of_image(), 0x4000);
+    assert_eq!(header.standard_fields.base_of_code, 0x2000);
+    assert_eq!(&pe.sections.find_rva_data(0x2000).unwrap()[..4], b"code");
+}

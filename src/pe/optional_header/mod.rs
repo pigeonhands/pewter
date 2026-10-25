@@ -46,6 +46,68 @@ impl CalulateOptVariantSize<Pe32Plus> for OptionalHeader {
 }
 
 impl OptionalHeader {
+    /// A PE32 header with the usual linker defaults and all 16 data directories.
+    pub fn new_pe32(subsystem: ImageSubsystem, image_base: u32) -> Self {
+        Self {
+            standard_fields: OptionalHeaderStandardFields {
+                magic: OptionalHeaderMagic::PE32,
+                major_linker_version: 48,
+                base_of_data: Some(0),
+                ..Default::default()
+            },
+            windows_specific_fields: OptionalHeaderWindowsSpecific::PE32(OptionalHeaderWindowsSpecificFields {
+                image_base,
+                section_alignment: 0x2000,
+                file_alignment: 0x200,
+                major_operating_system_version: 4,
+                major_subsystem_version: 4,
+                subsystem,
+                dll_characteristics: Self::default_dll_characteristics(),
+                size_of_stack_reserve: 0x10_0000,
+                size_of_stack_commit: 0x1000,
+                size_of_heap_reserve: 0x10_0000,
+                size_of_heap_commit: 0x1000,
+                number_of_rva_and_sizes: 16,
+                ..Default::default()
+            }),
+            data_directories: DataDirectories::default(),
+        }
+    }
+
+    /// A PE32+ header with the usual linker defaults and all 16 data directories.
+    pub fn new_pe32_plus(subsystem: ImageSubsystem, image_base: u64) -> Self {
+        Self {
+            standard_fields: OptionalHeaderStandardFields {
+                magic: OptionalHeaderMagic::PE32Plus,
+                major_linker_version: 48,
+                ..Default::default()
+            },
+            windows_specific_fields: OptionalHeaderWindowsSpecific::PE32Plus(OptionalHeaderWindowsSpecificFields {
+                image_base,
+                section_alignment: 0x2000,
+                file_alignment: 0x200,
+                major_operating_system_version: 4,
+                major_subsystem_version: 4,
+                subsystem,
+                dll_characteristics: Self::default_dll_characteristics(),
+                size_of_stack_reserve: 0x40_0000,
+                size_of_stack_commit: 0x4000,
+                size_of_heap_reserve: 0x10_0000,
+                size_of_heap_commit: 0x2000,
+                number_of_rva_and_sizes: 16,
+                ..Default::default()
+            }),
+            data_directories: DataDirectories::default(),
+        }
+    }
+
+    fn default_dll_characteristics() -> ImageDllCharacteristics {
+        ImageDllCharacteristics::DYNAMIC_BASE
+            | ImageDllCharacteristics::NX_COMPAT
+            | ImageDllCharacteristics::NO_SEH
+            | ImageDllCharacteristics::TERMINAL_SERVER_AWARE
+    }
+
     /// The size of the Optional Header in PE32. (With zero data directories)
     pub const fn size_pe32() -> usize {
         OptionalHeaderStandardFields::SIZE_PE + OptionalHeaderWindowsSpecificFields::<Pe32>::SIZE
