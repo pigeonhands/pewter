@@ -12,39 +12,29 @@ use crate::{
     io::{ReadData, WriteData},
 };
 use bitflags::bitflags;
+use strum::FromRepr;
 /// The optional header magic number determines whether an image is a PE32 or PE32+ executable.
 ///
 /// The most common number is 0x10B, which identifies it as a normal executable file.
 /// 0x107 identifies it as a ROM image, and 0x20B identifies it as a PE32+ executable.
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
+#[repr(u16)]
 pub enum OptionalHeaderMagic {
     #[default]
     PE32 = 0x10B,
     PE32Plus = 0x20B,
-    // Other(u16),
 }
 
 impl OptionalHeaderMagic {
     pub const SIZE: usize = 2;
 
     pub fn from_u16(sig: u16) -> Result<Self> {
-        match sig {
-            0x10B => Ok(Self::PE32),
-            0x20B => Ok(Self::PE32Plus),
-            //n => Self::Other(n),
-            _ => Err(PewterError::invalid_image_format(
-                "Bad optional header magic number",
-            )),
-        }
+        Self::from_repr(sig)
+            .ok_or_else(|| PewterError::invalid_image_format("Bad optional header magic number"))
     }
 
     pub fn to_u16(&self) -> u16 {
-        match self {
-            Self::PE32 => 0x10b,
-            Self::PE32Plus => 0x20b,
-            // Self::Other(n) => *n,
-        }
+        *self as u16
     }
 }
 
@@ -136,7 +126,7 @@ impl WriteData for &OptionalHeaderStandardFields {
 
 /// The following values defined for the Subsystem field of the optional header
 /// determine which Windows subsystem (if any) is required to run the image.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromRepr)]
 #[repr(u16)]
 pub enum ImageSubsystem {
     #[default]
@@ -169,48 +159,16 @@ pub enum ImageSubsystem {
     /// Windows boot application.
     WindowsBootApplication = 15,
     /// Other
-    Other(u16),
+    Other(u16) = 0xFFFF,
 }
 
 impl ImageSubsystem {
-    pub fn to_u16(&self) -> u16 {
-        match self {
-            Self::Unknown => 0,
-            Self::Native => 1,
-            Self::WindowsGui => 2,
-            Self::WindowsCui => 3,
-            Self::Os2Cui => 5,
-            Self::PosixCui => 7,
-            Self::NativeWindows => 8,
-            Self::WindowsCeGui => 9,
-            Self::EfiApplication => 10,
-            Self::EbiBootServiceDriver => 11,
-            Self::EfiRuntimeDriver => 12,
-            Self::EfiRom => 13,
-            Self::Xbox => 14,
-            Self::WindowsBootApplication => 15,
-            Self::Other(n) => *n,
-        }
+    pub fn from_u16(value: u16) -> Self {
+        Self::from_repr(value).unwrap_or(Self::Other(value))
     }
 
-    pub fn from_u16(subsystem: u16) -> Self {
-        match subsystem {
-            0 => Self::Unknown,
-            1 => Self::Native,
-            2 => Self::WindowsGui,
-            3 => Self::WindowsCui,
-            5 => Self::Os2Cui,
-            7 => Self::PosixCui,
-            8 => Self::NativeWindows,
-            9 => Self::WindowsCeGui,
-            10 => Self::EfiApplication,
-            11 => Self::EbiBootServiceDriver,
-            12 => Self::EfiRuntimeDriver,
-            13 => Self::EfiRom,
-            14 => Self::Xbox,
-            15 => Self::WindowsBootApplication,
-            n => Self::Other(n),
-        }
+    pub fn to_u16(&self) -> u16 {
+        crate::open_enum_value!(self, u16)
     }
 }
 

@@ -1,9 +1,10 @@
 use bitflags::bitflags;
+use strum::FromRepr;
 
 use crate::io::{ReadData, WriteData};
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
+#[repr(u16)]
 pub enum ImageFileMachine {
     #[default]
     /// The content of this field is
@@ -68,76 +69,16 @@ pub enum ImageFileMachine {
     /// MIPS little-endian WCE v2
     WceMipsV2 = 0x169,
     /// Other machine type
-    Other(u16),
+    Other(u16) = 0xFFFF,
 }
 
 impl ImageFileMachine {
-    pub fn from_u16(nachine_type: u16) -> Self {
-        match nachine_type {
-            0x0 => Self::Unknown,
-            0x184 => Self::Alpha,
-            0x284 => Self::Alpha64,
-            0x1d3 => Self::Am33,
-            0x8664 => Self::Amd64,
-            0x1c0 => Self::Arm,
-            0xaa64 => Self::Arm64,
-            0x1c4 => Self::ArmNT,
-            0xebc => Self::Ebc,
-            0x14c => Self::I386,
-            0x200 => Self::IA64,
-            0x6232 => Self::LoongArchH32,
-            0x6264 => Self::LoongArch64,
-            0x9041 => Self::M32R,
-            0x266 => Self::Mips16,
-            0x366 => Self::MipsFPU,
-            0x466 => Self::MipsFPU16,
-            0x1f0 => Self::PowerPC,
-            0x1f1 => Self::PowerPCFP,
-            0x166 => Self::R4000,
-            0x5032 => Self::RiscV32,
-            0x5064 => Self::RiscV64,
-            0x5128 => Self::RiscV128,
-            0x1a2 => Self::Sh3,
-            0x1a6 => Self::Sh4,
-            0x1a8 => Self::Sh5,
-            0x1c2 => Self::Thumb,
-            0x169 => Self::WceMipsV2,
-            n => Self::Other(n),
-        }
+    pub fn from_u16(value: u16) -> Self {
+        Self::from_repr(value).unwrap_or(Self::Other(value))
     }
 
     pub fn to_u16(&self) -> u16 {
-        match self {
-            Self::Unknown => 0x0,
-            Self::Alpha => 0x184,
-            Self::Alpha64 => 0x284,
-            Self::Am33 => 0x1d3,
-            Self::Amd64 => 0x8664,
-            Self::Arm => 0x1c0,
-            Self::Arm64 => 0xaa64,
-            Self::ArmNT => 0x1c4,
-            Self::Ebc => 0xebc,
-            Self::I386 => 0x14c,
-            Self::IA64 => 0x200,
-            Self::LoongArchH32 => 0x6232,
-            Self::LoongArch64 => 0x6264,
-            Self::M32R => 0x9041,
-            Self::Mips16 => 0x266,
-            Self::MipsFPU => 0x366,
-            Self::MipsFPU16 => 0x466,
-            Self::PowerPC => 0x1f0,
-            Self::PowerPCFP => 0x1f1,
-            Self::R4000 => 0x166,
-            Self::RiscV32 => 0x5032,
-            Self::RiscV64 => 0x5064,
-            Self::RiscV128 => 0x5128,
-            Self::Sh3 => 0x1a2,
-            Self::Sh4 => 0x1a6,
-            Self::Sh5 => 0x1a8,
-            Self::Thumb => 0x1c2,
-            Self::WceMipsV2 => 0x169,
-            Self::Other(n) => *n,
-        }
+        crate::open_enum_value!(self, u16)
     }
 }
 
@@ -252,6 +193,14 @@ impl WriteData for &CoffFileHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn machine_round_trips_known_and_unknown_values() {
+        assert_eq!(ImageFileMachine::from_u16(0x8664), ImageFileMachine::Amd64);
+        assert_eq!(ImageFileMachine::Amd64.to_u16(), 0x8664);
+        assert_eq!(ImageFileMachine::from_u16(0xFD1D), ImageFileMachine::Other(0xFD1D));
+        assert_eq!(ImageFileMachine::Other(0xFD1D).to_u16(), 0xFD1D);
+    }
+
     #[test]
     fn coff_header_is_20_bytes() {
         let buffer = [0u8; CoffFileHeader::SIZE];

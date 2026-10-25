@@ -1,7 +1,10 @@
 //! Optional Header Data Directories (Image Only)
+use strum::{EnumCount, EnumIter, FromRepr};
+
 use crate::io::{ReadData, WriteData};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, FromRepr, EnumIter, EnumCount)]
+#[repr(u8)]
 pub enum SectionName {
     ExportTable = 0,
     ImportTable = 1,
@@ -19,27 +22,6 @@ pub enum SectionName {
     DelayImportDescriptor = 13,
     ClrRuntimeHeader = 14,
     Reserved = 15,
-}
-
-impl SectionName {
-    pub const ALL: [SectionName; 16] = [
-        SectionName::ExportTable,
-        SectionName::ImportTable,
-        SectionName::ResourceTable,
-        SectionName::ExceptionTable,
-        SectionName::CertificateTable,
-        SectionName::BaseRelocationTable,
-        SectionName::Debug,
-        SectionName::Architecture,
-        SectionName::GlobalPtr,
-        SectionName::TlsTable,
-        SectionName::LoadConfigTable,
-        SectionName::BoundImport,
-        SectionName::Ita,
-        SectionName::DelayImportDescriptor,
-        SectionName::ClrRuntimeHeader,
-        SectionName::Reserved,
-    ];
 }
 
 /// All the possable data directories.
@@ -141,8 +123,7 @@ impl ImageDataDirectory {
     pub const SIZE: usize = 8;
 
     pub fn is_null(&self) -> bool {
-        self.virtual_address == 0 &&
-            self.size == 0
+        self.virtual_address == 0 && self.size == 0
     }
 }
 

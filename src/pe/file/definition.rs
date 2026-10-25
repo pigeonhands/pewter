@@ -1,5 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
+use strum::IntoEnumIterator;
+
 use crate::{
     containers::Table,
     error::{PewterError, Result},
@@ -106,11 +108,15 @@ impl PEImageDef {
     }
 
     pub fn file_alignment(&self) -> usize {
-        self.optional_header.windows_specific_fields.file_alignment() as usize
+        self.optional_header
+            .windows_specific_fields
+            .file_alignment() as usize
     }
 
     pub fn section_alignment(&self) -> usize {
-        self.optional_header.windows_specific_fields.section_alignment() as usize
+        self.optional_header
+            .windows_specific_fields
+            .section_alignment() as usize
     }
 
     /// Adds a new empty section after the last one.
@@ -174,16 +180,16 @@ impl PEImageDef {
         let file_alignment = self.file_alignment();
         let section_alignment = self.section_alignment();
 
-        let last_used_dir = SectionName::ALL
-            .iter()
-            .rposition(|dir| {
+        let last_used_dir = SectionName::iter()
+            .filter(|dir| {
                 !self
                     .optional_header
                     .data_directories
                     .get_directory(*dir)
                     .is_null()
             })
-            .map(|i| i as u32 + 1)
+            .map(|dir| dir as u32 + 1)
+            .max()
             .unwrap_or(0);
         let wsf = &mut self.optional_header.windows_specific_fields;
         wsf.set_number_of_rva_and_sizes(wsf.number_of_rva_and_sizes().max(last_used_dir));
@@ -213,10 +219,14 @@ impl PEImageDef {
             if s.characteristics.contains(SectionFlags::CNT_CODE) {
                 code += raw;
             }
-            if s.characteristics.contains(SectionFlags::CNT_INITIALIZED_DATA) {
+            if s.characteristics
+                .contains(SectionFlags::CNT_INITIALIZED_DATA)
+            {
                 init += raw;
             }
-            if s.characteristics.contains(SectionFlags::CNT_UNINITIALIZED_DATA) {
+            if s.characteristics
+                .contains(SectionFlags::CNT_UNINITIALIZED_DATA)
+            {
                 uninit += align_up(s.virtual_size(), file_alignment) as u32;
             }
         }
@@ -229,7 +239,12 @@ impl PEImageDef {
         wsf.set_size_of_headers(size_of_headers as u32);
         wsf.set_size_of_image(align_up(size_of_image, section_alignment) as u32);
 
-        if !self.optional_header.data_directories.certificate_table.is_null() {
+        if !self
+            .optional_header
+            .data_directories
+            .certificate_table
+            .is_null()
+        {
             let new_overlay = self.raw_data_end();
             let cert = &mut self.optional_header.data_directories.certificate_table;
             cert.virtual_address =
@@ -282,7 +297,10 @@ impl PEImageDef {
     /// section's data to a later file offset.
     fn make_room_for_headers(&mut self) {
         let grows = align_up(self.headers_size(), self.file_alignment()) > self.first_raw_offset;
-        if grows && self.first_raw_offset != 0 && self.dos_header.e_lfanew as usize > ImageDosHeader::SIZE {
+        if grows
+            && self.first_raw_offset != 0
+            && self.dos_header.e_lfanew as usize > ImageDosHeader::SIZE
+        {
             self.dos_stub.clear();
             self.dos_header.e_lfanew = ImageDosHeader::SIZE as u32;
         }
@@ -329,13 +347,17 @@ impl PEImageDef {
                     *n = b;
                 }
                 let size_of_raw_data = align_up(sec.data.len(), file_alignment);
-                
+
                 SectionTableRow {
                     name,
                     virtual_size: sec.virtual_size.max(sec.data.len() as u32),
                     virtual_address: sec.virtual_address,
                     characteristics: sec.characteristics,
-                    pointer_to_raw_data: if size_of_raw_data == 0 { 0 } else { data_offset as u32 },
+                    pointer_to_raw_data: if size_of_raw_data == 0 {
+                        0
+                    } else {
+                        data_offset as u32
+                    },
                     size_of_raw_data: size_of_raw_data as u32,
                     ..Default::default()
                 }

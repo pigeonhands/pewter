@@ -3,6 +3,7 @@ use crate::containers::Table;
 use crate::error::Result;
 use crate::io::ReadData;
 use crate::vec::Vec;
+use strum::FromRepr;
 
 use super::ParseSectionData;
 
@@ -37,25 +38,23 @@ impl ParseSectionData for CertificateDataDirectory {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
 pub enum CertificateType {
     X509 = 0x0001,
     PkcsSignedData = 0x0002,
     Reserved1 = 0x0003,
     TsStackSigned = 0x0004,
-    Other(u16),
+    Other(u16) = 0xFFFF,
 }
 
 impl CertificateType {
-    pub fn from_u16(val: u16) -> Self {
-        match val {
-            0x0001 => Self::X509,
-            0x0002 => Self::PkcsSignedData,
-            0x0003 => Self::Reserved1,
-            0x0004 => Self::TsStackSigned,
-            other => Self::Other(other),
-        }
+    pub fn from_u16(value: u16) -> Self {
+        Self::from_repr(value).unwrap_or(Self::Other(value))
+    }
+
+    pub fn to_u16(&self) -> u16 {
+        crate::open_enum_value!(self, u16)
     }
 }
 
@@ -65,21 +64,21 @@ impl Default for CertificateType {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
 pub enum CertificateRevision {
     Revision1_0 = 0x0100,
     Revision2_0 = 0x0200,
-    Other(u16),
+    Other(u16) = 0xFFFF,
 }
 
 impl CertificateRevision {
-    pub fn from_u16(val: u16) -> Self {
-        match val {
-            0x0001 => Self::Revision1_0,
-            0x0002 => Self::Revision2_0,
-            other => Self::Other(other),
-        }
+    pub fn from_u16(value: u16) -> Self {
+        Self::from_repr(value).unwrap_or(Self::Other(value))
+    }
+
+    pub fn to_u16(&self) -> u16 {
+        crate::open_enum_value!(self, u16)
     }
 }
 

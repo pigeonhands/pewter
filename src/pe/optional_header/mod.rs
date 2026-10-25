@@ -7,6 +7,8 @@ use crate::{
     io::{ReadData, WriteData},
 };
 
+use strum::IntoEnumIterator;
+
 use self::data_directories::{DataDirectories, ImageDataDirectory, SectionName};
 
 /// Every image file has an optional header that provides information to the loader.
@@ -88,9 +90,8 @@ impl ReadData for OptionalHeader {
         };
 
         let mut data_directories = DataDirectories::default();
-        for data_dir_name in SectionName::ALL
-            .into_iter()
-            .take(windows_specific_fields.number_of_rva_and_sizes() as usize)
+        for data_dir_name in
+            SectionName::iter().take(windows_specific_fields.number_of_rva_and_sizes() as usize)
         {
             data_directories.set_directory(data_dir_name, reader.read()?);
         }
@@ -112,8 +113,7 @@ impl WriteData for &OptionalHeader {
             _ => return Err(PewterError::invalid_image_format("Mismatching Optiional Header standard_fields.magic value and windows_specific_fields variant."))
         }
 
-        for data_dir_name in SectionName::ALL
-            .into_iter()
+        for data_dir_name in SectionName::iter()
             .take(self.windows_specific_fields.number_of_rva_and_sizes() as usize)
         {
             writer.write(self.data_directories.get_directory(data_dir_name))?;

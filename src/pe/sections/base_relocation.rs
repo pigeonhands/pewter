@@ -4,6 +4,7 @@
 //! For more information, see Optional Header Data Directories (Image Only).
 //! The base relocation table is divided into blocks. Each block represents the base relocations for a 4K page.
 //! Each block must start on a 32-bit boundary.
+use strum::FromRepr;
 
 use crate::{
     containers::Table,
@@ -75,7 +76,7 @@ impl WriteData for BaseRelocationBlockHeader {
     }
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u8)]
 pub enum BaseRelocationType {
     /// The base relocation is skipped. This type can be used to pad a block.
@@ -120,25 +121,8 @@ pub enum BaseRelocationType {
 
 impl BaseRelocationType {
     pub fn from_u8(value: u8) -> Result<Self> {
-        let reloc_type = match value {
-            0 => Self::Absolute,
-            1 => Self::High,
-            2 => Self::Low,
-            3 => Self::HighLow,
-            4 => Self::HighAdj,
-            5 => Self::MipsJmpAddrOrArmMove32OrRscvHigh20,
-            6 => Self::Reserved,
-            7 => Self::ThumbMov32OrRiscVLow121,
-            8 => Self::RiscVLow125OtLoongArch32or64MarkLa,
-            9 => Self::MipsJmpAddr16,
-            10 => Self::Dir64,
-            _ => {
-                return Err(PewterError::invalid_image_format(
-                    "Invalid base relcation type..",
-                ))
-            }
-        };
-        Ok(reloc_type)
+        Self::from_repr(value)
+            .ok_or_else(|| PewterError::invalid_image_format("Invalid base relocation type"))
     }
 
     pub fn to_u8(&self) -> u8 {
