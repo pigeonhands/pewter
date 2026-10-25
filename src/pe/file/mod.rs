@@ -20,6 +20,16 @@ pub struct PEFile<'a> {
     pub coff_header: coff::CoffFileHeader,
     pub optional_header: Option<optional_header::OptionalHeader>,
     pub sections: Sections<'a>,
+    file_bytes: FileBytes<'a>,
+}
+
+#[derive(Clone, PartialEq)]
+struct FileBytes<'a>(&'a [u8]);
+
+impl<'a> core::fmt::Debug for FileBytes<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "<{} bytes>", self.0.len())
+    }
 }
 
 impl<'a> PEFile<'a> {
@@ -72,7 +82,13 @@ impl<'a> PEFile<'a> {
             coff_header,
             optional_header,
             sections,
+            file_bytes: FileBytes(data),
         })
+    }
+
+    /// The bytes the file was parsed from.
+    pub fn file_bytes(&self) -> &'a [u8] {
+        self.file_bytes.0
     }
 
     fn read_section_data<T: ParseSectionData>(

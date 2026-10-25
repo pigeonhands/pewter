@@ -72,7 +72,7 @@ impl OptionalHeader {
     /// Get the dada directory if index is less than
     /// [OptionalHeaderWindowsSpecific::number_of_rva_and_sizes](OptionalHeaderWindowsSpecificFields::number_of_rva_and_sizes).
     pub fn try_get_data_directory(&self, name: SectionName) -> Option<ImageDataDirectory> {
-        (self.windows_specific_fields.number_of_rva_and_sizes() < name as u32)
+        ((name as u32) < self.windows_specific_fields.number_of_rva_and_sizes())
             .then(|| self.data_directories.get_directory(name))
     }
 }

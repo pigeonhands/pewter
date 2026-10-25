@@ -1,11 +1,16 @@
+use core::ops::{Deref, DerefMut};
+
 use crate::{
     containers::Table,
-    error::Result,
+    error::{PewterError, Result},
     io::{WriteData, Writer},
     pe::{
-        coff::{CoffFileHeader, ImageFileCharacteristics, ImageFileMachine},
+        coff::CoffFileHeader,
         dos::ImageDosHeader,
-        optional_header::{self, data_directories::SectionName},
+        optional_header::{
+            self,
+            data_directories::{ImageDataDirectory, SectionName},
+        },
         sections::{SectionFlags, SectionTableRow, Sections},
     },
     string::String,
@@ -13,15 +18,35 @@ use crate::{
     PEFile,
 };
 
+#[inline]
+pub fn align_up(value: usize, alignment: usize) -> usize {
+    if alignment <= 1 {
+        return value;
+    }
+    (value + alignment - 1) & !(alignment - 1)
+}
+
+/// An owned, editable PE image that can be written back to bytes.
+#[derive(Debug, Clone)]
 pub struct PEImageDef {
     pub dos_header: ImageDosHeader,
-    pub file_characteristics: ImageFileCharacteristics,
+    /// Bytes between the DOS header and the PE signature.
+    pub dos_stub: Vec<u8>,
+    pub coff_header: CoffFileHeader,
     pub optional_header: optional_header::OptionalHeader,
     pub sections: SectionDefinitions,
+    /// Data after the last section (e.g. the certificate table).
+    pub overlay: Vec<u8>,
+    overlay_offset: usize,
 }
 
 impl PEImageDef {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        PEFile::parse_minimal(data).map(Self::from_pe_file)
+    }
+
     pub fn from_pe_file(pe_file: PEFile) -> Self {
+        let file_bytes = pe_file.file_bytes();
         let PEFile {
             dos_header,
             coff_header,
@@ -30,39 +55,56 @@ impl PEImageDef {
             ..
         } = pe_file;
 
-        let sections = {
-            let Sections(Table(section_rows)) = sections;
+        let stub_end = (dos_header.e_lfanew as usize).min(file_bytes.len());
+        let dos_stub = file_bytes
+            .get(ImageDosHeader::SIZE..stub_end)
+            .map(Vec::from)
+            .unwrap_or_default();
 
-            let mapped_sections = section_rows.into_iter().map(|s| SectionHeap {
-                data: Vec::from(s.data),
+        let Sections(Table(section_rows)) = sections;
+
+        let overlay_offset = section_rows
+            .iter()
+            .map(|s| s.row.pointer_to_raw_data as usize + s.row.size_of_raw_data as usize)
+            .max()
+            .unwrap_or(file_bytes.len())
+            .min(file_bytes.len());
+
+        let mut sections: Vec<SectionHeap> = section_rows
+            .into_iter()
+            .map(|s| SectionHeap {
+                data: match s.row.virtual_size as usize {
+                    0 => Vec::from(s.data),
+                    vsize => Vec::from(&s.data[..vsize.min(s.data.len())]),
+                },
                 name: s.row.name_str().into(),
                 characteristics: s.row.characteristics,
                 virtual_address: s.row.virtual_address,
                 virtual_size: s.row.virtual_size,
-            });
-
-            let mut sections = SectionDefinitions::default();
-            for s in mapped_sections {
-                match s.name.as_str() {
-                    ".text" => sections.text = Some(s),
-                    ".data" => sections.data = Some(s),
-                    ".rdata" => sections.rdata = Some(s),
-                    ".reloc" => sections.reloc = Some(s),
-                    ".pdata" => sections.pdata = Some(s),
-                    _ => sections.other.push(s),
-                }
-            }
-            sections
-        };
+            })
+            .collect();
+        sections.sort_by_key(|s| s.virtual_address);
 
         Self {
             dos_header,
+            dos_stub,
+            coff_header,
             optional_header: optional_header.unwrap_or_default(),
-            sections,
-            file_characteristics: coff_header.characteristics,
+            sections: SectionDefinitions(sections),
+            overlay: Vec::from(&file_bytes[overlay_offset..]),
+            overlay_offset,
         }
     }
 
+    pub fn file_alignment(&self) -> usize {
+        self.optional_header.windows_specific_fields.file_alignment() as usize
+    }
+
+    pub fn section_alignment(&self) -> usize {
+        self.optional_header.windows_specific_fields.section_alignment() as usize
+    }
+
+    /// Adds a new empty section after the last one.
     pub fn new_section(
         &mut self,
         name: impl Into<String>,
@@ -70,315 +112,321 @@ impl PEImageDef {
     ) -> &mut SectionHeap {
         let section = SectionHeap {
             name: name.into(),
-            virtual_address: self.sections.next_virtual_address() as u32,
+            virtual_address: self.sections.next_virtual_address(self.section_alignment()) as u32,
             data: Vec::new(),
             characteristics,
             virtual_size: 0,
         };
-        self.sections.other.push(section);
-        self.sections.other.last_mut().unwrap()
+        self.sections.push(section);
+        self.sections.last_mut().unwrap()
     }
 
-    pub fn fix_headers(&mut self) {
-        let file_alignment = self.optional_header.windows_specific_fields.file_alignment() as usize;
-        let allign_section = |addr: usize| {
-            (addr + file_alignment) & (!(file_alignment - 1))
-        };
+    pub fn read_at_rva(&self, rva: u32, len: usize) -> Option<&[u8]> {
+        let section = self.sections.find_rva(rva as usize)?;
+        let start = (rva - section.virtual_address) as usize;
+        section.data.get(start..start + len)
+    }
 
-        self.optional_header.windows_specific_fields.set_size_of_headers(
-            allign_section(self.dos_header.e_lfanew as usize
+    pub fn write_at_rva(&mut self, rva: u32, data: &[u8]) -> Result<()> {
+        let section = self
+            .sections
+            .find_rva_mut(rva as usize)
+            .ok_or_else(|| PewterError::invalid_image_format("RVA is not inside a section"))?;
+        let start = (rva - section.virtual_address) as usize;
+        let dest = section
+            .data
+            .get_mut(start..start + data.len())
+            .ok_or_else(|| PewterError::not_enough_space(data.len()))?;
+        dest.copy_from_slice(data);
+        Ok(())
+    }
+
+    /// Removes the certificate table. Any edit to the image invalidates it anyway.
+    pub fn strip_certificate(&mut self) {
+        let cert = self.optional_header.data_directories.certificate_table;
+        if !cert.is_null() {
+            let start = (cert.virtual_address as usize).saturating_sub(self.overlay_offset);
+            if start <= self.overlay.len() {
+                self.overlay.truncate(start);
+            }
+            self.optional_header.data_directories.certificate_table = ImageDataDirectory::default();
+        }
+    }
+
+    fn headers_size(&self) -> usize {
+        self.dos_header.e_lfanew as usize
             + PEFile::SIGNATURE.len()
             + CoffFileHeader::SIZE
             + self.optional_header.size()
-            +  (SectionTableRow::SIZE * self.sections.count())) as u32
-        );
+            + SectionTableRow::SIZE * self.sections.len()
+    }
 
-        self.optional_header.windows_specific_fields.set_size_of_image(self.output_size() as u32);
+    pub fn fix_headers(&mut self) -> Result<()> {
+        let file_alignment = self.file_alignment();
+        let section_alignment = self.section_alignment();
 
-        let number_of_data_directories =
-            SectionName::ALL
-                .iter()
-                .enumerate()
-                .fold(0, |acc, (i, dir)| {
-                    if self
-                        .optional_header
-                        .data_directories
-                        .get_directory(*dir)
-                        .is_null()
-                    {
-                        (i+1) as u32
-                    } else {
-                        acc
-                    }
-                });
+        let last_used_dir = SectionName::ALL
+            .iter()
+            .rposition(|dir| {
+                !self
+                    .optional_header
+                    .data_directories
+                    .get_directory(*dir)
+                    .is_null()
+            })
+            .map(|i| i as u32 + 1)
+            .unwrap_or(0);
+        let wsf = &mut self.optional_header.windows_specific_fields;
+        wsf.set_number_of_rva_and_sizes(wsf.number_of_rva_and_sizes().max(last_used_dir));
 
-        self.optional_header
-            .windows_specific_fields
-            .set_number_of_rva_and_sizes(
-                self.optional_header
-                    .windows_specific_fields
-                    .number_of_rva_and_sizes()
-                    .max(number_of_data_directories),
-            );
-/*
-        if let Some(init_data) = &self.sections.data {
-            self.optional_header.standard_fields.size_of_initilized_data = self
-                .optional_header
-                .standard_fields
-                .size_of_initilized_data
-                .max(init_data.data.len() as u32);
+        self.coff_header.number_of_sections = self.sections.len() as u16;
+        self.coff_header.size_of_optional_header = self.optional_header.size() as u16;
+
+        let size_of_headers = align_up(self.headers_size(), file_alignment);
+        if let Some(first) = self.sections.first() {
+            if size_of_headers > first.virtual_address as usize {
+                return Err(PewterError::invalid_image_format(
+                    "Section table does not fit before the first section",
+                ));
+            }
         }
 
-        if let Some(code) = &self.sections.text {
-            self.optional_header.standard_fields.size_of_code = self
-                .optional_header
-                .standard_fields
-                .size_of_code
-                .max(code.data.len() as u32);
-        } */
+        let size_of_image = self
+            .sections
+            .last()
+            .map(|s| s.virtual_address as usize + s.virtual_size())
+            .unwrap_or(size_of_headers);
+
+        let (mut code, mut init, mut uninit) = (0, 0, 0);
+        for s in self.sections.iter() {
+            let raw = align_up(s.data.len(), file_alignment) as u32;
+            if s.characteristics.contains(SectionFlags::CNT_CODE) {
+                code += raw;
+            }
+            if s.characteristics.contains(SectionFlags::CNT_INITIALIZED_DATA) {
+                init += raw;
+            }
+            if s.characteristics.contains(SectionFlags::CNT_UNINITIALIZED_DATA) {
+                uninit += align_up(s.virtual_size(), file_alignment) as u32;
+            }
+        }
+        let std = &mut self.optional_header.standard_fields;
+        std.size_of_code = code;
+        std.size_of_initilized_data = init;
+        std.size_of_unitilized_data = uninit;
+
+        let wsf = &mut self.optional_header.windows_specific_fields;
+        wsf.set_size_of_headers(size_of_headers as u32);
+        wsf.set_size_of_image(align_up(size_of_image, section_alignment) as u32);
+
+        if !self.optional_header.data_directories.certificate_table.is_null() {
+            let new_overlay = self.raw_data_end();
+            let cert = &mut self.optional_header.data_directories.certificate_table;
+            cert.virtual_address =
+                (cert.virtual_address as usize - self.overlay_offset + new_overlay) as u32;
+            self.overlay_offset = new_overlay;
+        }
+        Ok(())
     }
 
-    pub fn output_size(&self) -> usize {
-        //self.sections.iter_sections().fold(0, |acc, sec| {
-        //   let size = sec.
-        //   acc
-        //});
-        let file_alignment = self.optional_header.windows_specific_fields.section_alignment() as usize;
-        let allign_section = |addr: usize| {
-            (addr + file_alignment) & (!(file_alignment - 1))
-        };
-
-            self.optional_header.windows_specific_fields.size_of_headers() as usize
-            + self
-                .sections
-                .iter_sections()
-                .map(|s| {
-                    if (s.data.len() & (file_alignment-1)) != 0 {
-                        allign_section( s.data.len())
-                    }else {
-                        s.data.len()
-                    }
-                })
-                .sum::<usize>()
+    fn raw_data_end(&self) -> usize {
+        let file_alignment = self.file_alignment();
+        self.sections.iter().fold(
+            align_up(self.headers_size(), file_alignment),
+            |offset, s| offset + align_up(s.data.len(), file_alignment),
+        )
     }
 
-    pub fn write_file(&mut self) -> Result<crate::vec::Vec<u8>> {
-        self.fix_headers();
-        self.write_no_fix()
+    pub fn write_file(&mut self) -> Result<Vec<u8>> {
+        self.fix_headers()?;
+        let mut buffer = self.write_no_fix()?;
+        if self.optional_header.windows_specific_fields.check_sum() != 0 {
+            let offset = self.checksum_offset();
+            let checksum = pe_checksum(&buffer, offset);
+            buffer[offset..offset + 4].copy_from_slice(&checksum.to_le_bytes());
+            self.optional_header
+                .windows_specific_fields
+                .set_check_sum(checksum);
+        }
+        Ok(buffer)
+    }
+
+    fn checksum_offset(&self) -> usize {
+        self.dos_header.e_lfanew as usize + PEFile::SIGNATURE.len() + CoffFileHeader::SIZE + 64
     }
 
     pub fn write_no_fix(&self) -> Result<Vec<u8>> {
-        let mut buffer = crate::vec::Vec::with_capacity(self.output_size());
-        //ImageDosHeader {
-        //e_magic: ImageDosHeader::MAGIC_CONSTANT,
-//
-        //    e_lfanew: 0xf0,
-        //    ..Default::default()
-        //}
-        //.write_to(&mut buffer)?;
+        let file_alignment = self.file_alignment();
+        let mut buffer = Vec::with_capacity(self.raw_data_end() + self.overlay.len());
+
         self.dos_header.write_to(&mut buffer)?;
+        buffer.write_slice(&self.dos_stub)?;
+        buffer.resize(self.dos_header.e_lfanew as usize, 0);
 
-        // TODO: Write dos stub
-        while buffer.len() < self.dos_header.e_lfanew as usize {
-            buffer.write(0u8)?;
-        }
-       // buffer.write([0u8; self.dos_header.e_lfanew - ImageDosHeader::SIZE])?;
         PEFile::SIGNATURE.write_to(&mut buffer)?;
-
-        CoffFileHeader {
-            machine: ImageFileMachine::Amd64,
-            characteristics: self.file_characteristics,
-            size_of_optional_header: self.optional_header.size() as u16,
-            number_of_sections: self.sections.count() as u16,
-            ..Default::default()
-        }
-        .write_to(&mut buffer)?;
-
+        self.coff_header.write_to(&mut buffer)?;
         self.optional_header.write_to(&mut buffer)?;
 
-        let file_alignment = self.optional_header.windows_specific_fields.file_alignment() as usize;
-        let allign_section = |addr: usize| {
-            (addr + file_alignment) & (!(file_alignment - 1))
-        };
+        let mut data_offset = align_up(
+            buffer.len() + SectionTableRow::SIZE * self.sections.len(),
+            file_alignment,
+        );
 
-        let mut data_offset = allign_section(buffer.len() + (SectionTableRow::SIZE * self.sections.count()));
-
-        let sections: Vec<_> = self
+        let rows: Vec<SectionTableRow> = self
             .sections
-            .iter_sections()
+            .iter()
             .map(|sec| {
-                (&sec.data, {
-                    let name = {
-                        let mut name_buffer = [0u8; 8];
-                        for (c, buff) in sec.name.chars().take(8).zip(name_buffer.iter_mut()) {
-                            *buff = c as u8;
-                        }
-                        name_buffer
-                    };
-                    let pointer_to_raw_data = data_offset as u32;
-                    data_offset  += sec.data.len();
-                    
-                    if (data_offset & (file_alignment-1)) != 0 {
-                        data_offset =  allign_section( data_offset);
-                    }
-
-                    SectionTableRow {
-                        name,
-                        virtual_size: sec.virtual_size.max(sec.data.len() as u32),
-                        virtual_address: sec.virtual_address,
-                        characteristics: sec.characteristics,
-                        pointer_to_raw_data,
-                        size_of_raw_data: sec.data.len() as u32,
-                        ..Default::default()
-                    }
-                })
+                let mut name = [0u8; 8];
+                for (b, n) in sec.name.bytes().take(8).zip(name.iter_mut()) {
+                    *n = b;
+                }
+                let size_of_raw_data = align_up(sec.data.len(), file_alignment);
+                let row = SectionTableRow {
+                    name,
+                    virtual_size: sec.virtual_size.max(sec.data.len() as u32),
+                    virtual_address: sec.virtual_address,
+                    characteristics: sec.characteristics,
+                    pointer_to_raw_data: if size_of_raw_data == 0 { 0 } else { data_offset as u32 },
+                    size_of_raw_data: size_of_raw_data as u32,
+                    ..Default::default()
+                };
+                data_offset += size_of_raw_data;
+                row
             })
             .collect();
 
-        for (_, sec) in &sections {
-            sec.write_to(&mut buffer)?;
+        for row in &rows {
+            row.write_to(&mut buffer)?;
         }
 
-        for (sec_data, sec) in sections {
-            while buffer.len() < sec.pointer_to_raw_data as usize {
-                buffer.write(0u8)?;
+        for (sec, row) in self.sections.iter().zip(rows.iter()) {
+            if row.size_of_raw_data == 0 {
+                continue;
             }
-            buffer.write_slice(sec_data)?;
+            buffer.resize(row.pointer_to_raw_data as usize, 0);
+            buffer.write_slice(&sec.data)?;
         }
+        buffer.resize(align_up(buffer.len(), file_alignment), 0);
+        buffer.write_slice(&self.overlay)?;
 
         Ok(buffer)
     }
 }
 
-/// If a section has a `virtual_address` of 0, it
-/// is not included.
-///
-/// The named fields are well known section names just for convenience.
-/// They are treated exactly the same as values in `other`.
-#[derive(Debug, Clone, Default)]
-pub struct SectionDefinitions {
-    /// .text section
-    ///
-    /// Flash memory. Mainly constant variables
-    /// and compiled code
-    pub text: Option<SectionHeap>,
-    /// .data section
-    ///
-    /// Uninitilized data.
-    /// Inital values of dynamic variables.
-    pub data: Option<SectionHeap>,
-    /// Read-only initialized data
-    pub rdata: Option<SectionHeap>,
-    /// exception table
-    pub pdata: Option<SectionHeap>,
-    /// Relocation table.
-    /// this will be written to if virtual addresses need to be moved.
-    pub reloc: Option<SectionHeap>,
-    /// Other sections
-    pub other: Vec<SectionHeap>,
+/// Standard PE checksum, skipping the 4 byte checksum field at `checksum_offset`.
+pub fn pe_checksum(data: &[u8], checksum_offset: usize) -> u32 {
+    let mut sum: u64 = 0;
+    for (i, chunk) in data.chunks(2).enumerate() {
+        let offset = i * 2;
+        if offset == checksum_offset || offset == checksum_offset + 2 {
+            continue;
+        }
+        let word = match chunk {
+            [a, b] => u16::from_le_bytes([*a, *b]),
+            [a] => *a as u16,
+            _ => 0,
+        };
+        sum += word as u64;
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    sum = (sum & 0xFFFF) + (sum >> 16);
+    (sum as u32).wrapping_add(data.len() as u32)
 }
 
+/// Sections ordered by virtual address.
+#[derive(Debug, Clone, Default)]
+pub struct SectionDefinitions(pub Vec<SectionHeap>);
+
 impl SectionDefinitions {
-    pub const VIRTUAL_ADDRESS_ALIGNMENT: usize = 0x1000;
-
-    pub fn allign_to_next_section(addr: usize) -> usize {
-        (addr + Self::VIRTUAL_ADDRESS_ALIGNMENT) & (!(Self::VIRTUAL_ADDRESS_ALIGNMENT - 1))
+    pub fn by_name(&self, name: &str) -> Option<&SectionHeap> {
+        self.0.iter().find(|s| s.name == name)
     }
 
-    /// Iters all sections that have a non-zero `virtual_address`.
-    pub fn iter_sections(&self) -> impl Iterator<Item = &SectionHeap> {
-        [&self.text, &self.rdata, &self.data,&self.pdata, &self.reloc]
-            .into_iter()
-            .flat_map(|f| f.as_ref())
-            .chain(self.other.iter())
-            .filter(|heap| heap.virtual_address != 0)
+    pub fn by_name_mut(&mut self, name: &str) -> Option<&mut SectionHeap> {
+        self.0.iter_mut().find(|s| s.name == name)
     }
 
-    pub fn count(&self) -> usize {
-        self.iter_sections().count()
-    }
-
-    /// Finds the section that contains the given virtual address
-    #[inline(always)]
     pub fn find_rva(&self, virtual_address: usize) -> Option<&SectionHeap> {
-        if virtual_address == 0 {
-            return None;
-        }
-        self.iter_sections().find(|heap| {
-            virtual_address >= (heap.virtual_address as usize)
-                && virtual_address < (heap.virtual_address as usize + heap.data.len())
+        self.0.iter().find(|s| s.contains_rva(virtual_address))
+    }
+
+    pub fn find_rva_mut(&mut self, virtual_address: usize) -> Option<&mut SectionHeap> {
+        self.0.iter_mut().find(|s| s.contains_rva(virtual_address))
+    }
+
+    pub fn has_overlapping_sections(&self) -> bool {
+        self.0.windows(2).any(|w| {
+            w[0].virtual_address as usize + w[0].virtual_size() > w[1].virtual_address as usize
         })
     }
 
-    #[inline]
-    pub fn has_overlapping_sections(&self) -> bool {
-        for section in self.iter_sections() {
-            if let Some(overlapping_section) = self.find_rva(section.virtual_address as usize) {
-                if !core::ptr::eq(section, overlapping_section) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Add section and add base virtual address of section.
-    /// If `virtual_address` is zero, [`SectionDefinitions::next_virtual_address`] will be used.
-    pub fn add_section(&mut self, mut section: SectionHeap) -> usize {
+    /// Adds a section, assigning [`SectionDefinitions::next_virtual_address`] if
+    /// `virtual_address` is zero. Returns the virtual address.
+    pub fn add_section(&mut self, mut section: SectionHeap, section_alignment: usize) -> usize {
         if section.virtual_address == 0 {
-            section.virtual_address = self.next_virtual_address() as u32;
+            section.virtual_address = self.next_virtual_address(section_alignment) as u32;
         }
         let vaddr = section.virtual_address;
-        self.other.push(section);
+        self.0.push(section);
+        self.0.sort_by_key(|s| s.virtual_address);
         vaddr as usize
     }
 
-    /// Finds the next availible virtual address
-    pub fn next_virtual_address(&self) -> usize {
-        let v_addr = self.iter_sections().fold(0, |accumulator, heap| {
-            let heap_end_addr = heap.virtual_address as usize + heap.data.len();
-            if heap_end_addr > accumulator {
-                heap_end_addr
-            } else {
-                accumulator
-            }
-        });
-        Self::allign_to_next_section(v_addr)
-        //v_addr
+    pub fn next_virtual_address(&self, section_alignment: usize) -> usize {
+        let end = self
+            .0
+            .iter()
+            .map(|s| s.virtual_address as usize + s.virtual_size())
+            .max()
+            .unwrap_or(0);
+        align_up(end, section_alignment)
     }
 }
 
-/// virtual addresses need to be set before adding data
-/// use [PEImageDef::add_section] if possable.
+impl Deref for SectionDefinitions {
+    type Target = Vec<SectionHeap>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SectionDefinitions {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SectionHeap {
-    /// Name of section.
-    /// Names longer than 8 bytes will be truncated.
+    /// Names longer than 8 bytes are truncated.
     pub name: String,
-    /// Where the section will be loaded into memory.
     pub virtual_address: u32,
-    /// Leave as zero for new sections.
+    /// Leave as zero to use the data length.
     pub virtual_size: u32,
     pub characteristics: SectionFlags,
     pub data: Vec<u8>,
 }
 
 impl SectionHeap {
-    /// Add data to heap and return the virtual address of the data, extending the
-    /// `virtual_size` if needed.
-    /// If virtual address is zero, this will just be an offset into the heap.
+    /// Appends data, returning its virtual address.
     pub fn add_data(&mut self, data: &[u8]) -> usize {
-        let addr: usize = self.virtual_address as usize + self.data.len();
+        let addr = self.virtual_address as usize + self.data.len();
         self.data.extend_from_slice(data);
         addr
     }
 
-    pub fn virtual_size(&self) -> usize {
-        SectionDefinitions::allign_to_next_section(self.data.len())
+    /// Pads the data so the next [`SectionHeap::add_data`] is aligned.
+    pub fn align_data(&mut self, alignment: usize) {
+        self.data.resize(align_up(self.data.len(), alignment), 0);
     }
 
-    /// Returns the remaning space until a new section needs to be allocated.
-    pub fn remaining_section_size(&self) -> usize {
-        self.virtual_size() - self.data.len()
+    pub fn virtual_size(&self) -> usize {
+        (self.virtual_size as usize).max(self.data.len())
+    }
+
+    pub fn contains_rva(&self, virtual_address: usize) -> bool {
+        virtual_address >= self.virtual_address as usize
+            && virtual_address < self.virtual_address as usize + self.virtual_size()
     }
 }
