@@ -23,3 +23,25 @@ pewter
 A libarary for reading and writing PE files.
 
 The documentation for this code is directly from [Microsofts pe-format documentation](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format).
+## Writing
+
+`PEImageDef` is an owned, editable copy of an image. Writing an unmodified image produces the
+original bytes. The DOS stub, COFF fields, section order and overlay data are kept.
+
+```rust
+use pewter::pe::{definition::PEImageDef, sections::SectionFlags};
+
+let data = std::fs::read("app.exe")?;
+let mut image = PEImageDef::parse(&data)?;
+
+let rva = image
+    .new_section(".extra", SectionFlags::CNT_INITIALIZED_DATA | SectionFlags::MEM_READ)
+    .add_data(b"hello");
+image.write_at_rva(rva as u32, b"HELLO")?;
+
+std::fs::write("app.patched.exe", image.write_file()?)?;
+```
+
+`write_file` recalculates the header sizes, section offsets and checksum. Images with a section
+alignment below the page size (e.g. crossgen output) keep their file offsets congruent to their
+RVAs so they can still be mapped directly.
