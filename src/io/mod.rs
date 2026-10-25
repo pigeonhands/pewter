@@ -88,7 +88,7 @@ impl<const N: usize> ReadData for [u16; N] {
         let mut read_buffer = reader.read_slice(core::mem::size_of::<u16>() * N)?;
 
         if cfg!(all(target_endian = "little", feature = "fast-rw")) {
-            Ok(unsafe { *read_buffer.as_ptr().cast() })
+            Ok(unsafe { core::ptr::read_unaligned(read_buffer.as_ptr().cast()) })
         } else {
             let mut write_buffer: [MaybeUninit<u16>; N] =
                 unsafe { MaybeUninit::uninit().assume_init() };
@@ -166,7 +166,7 @@ macro_rules! impl_read_write_data {
                 fn read(reader: &mut impl Reader) -> Result<$t> {
                     if cfg!(all(target_endian = "little", feature = "fast-rw")) {
                         let read_buffer = reader.read_slice(core::mem::size_of::<$t>())?;
-                        Ok(unsafe { *read_buffer.as_ptr().cast() })
+                        Ok(unsafe { core::ptr::read_unaligned(read_buffer.as_ptr().cast()) })
                     }else {
                         let data = reader.read();
                         data.map(<$t>::from_le_bytes)
