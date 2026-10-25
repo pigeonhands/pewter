@@ -31,7 +31,7 @@ impl<'a> Reader for &'a [u8] {
     }
 }
 
-impl<'a> Writer for &'a mut [u8] {
+impl Writer for &mut [u8] {
     #[inline(always)]
     fn write_slice(&mut self, data: &[u8]) -> Result<()> {
         if self.len() < data.len() {

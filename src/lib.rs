@@ -4,7 +4,7 @@
 #[cfg(feature = "std")]
 mod alloc_containers {
     pub extern crate std;
-    pub use std::{error, string, vec, borrow};
+    pub use std::{error, string, vec};
 }
 #[cfg(not(feature = "std"))]
 mod alloc_containers {

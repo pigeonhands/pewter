@@ -329,7 +329,8 @@ impl PEImageDef {
                     *n = b;
                 }
                 let size_of_raw_data = align_up(sec.data.len(), file_alignment);
-                let row = SectionTableRow {
+                
+                SectionTableRow {
                     name,
                     virtual_size: sec.virtual_size.max(sec.data.len() as u32),
                     virtual_address: sec.virtual_address,
@@ -337,8 +338,7 @@ impl PEImageDef {
                     pointer_to_raw_data: if size_of_raw_data == 0 { 0 } else { data_offset as u32 },
                     size_of_raw_data: size_of_raw_data as u32,
                     ..Default::default()
-                };
-                row
+                }
             })
             .collect();
 
