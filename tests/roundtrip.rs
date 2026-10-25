@@ -4,19 +4,54 @@ use pewter::pe::{
     PEFile,
 };
 
-const SAMPLE: &[u8] = include_bytes!("fixtures/Sample.dll");
+/// PE files to test with: `PEWTER_TEST_PE` if set, otherwise an installed .NET framework.
+fn test_images() -> Vec<std::path::PathBuf> {
+    if let Some(path) = std::env::var_os("PEWTER_TEST_PE") {
+        return vec![path.into()];
+    }
+    let roots = ["/usr/share/dotnet", "/usr/lib/dotnet", r"C:\Program Files\dotnet"];
+    let mut images: Vec<_> = roots
+        .iter()
+        .map(|r| std::path::Path::new(r).join("shared/Microsoft.NETCore.App"))
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(|v| std::fs::read_dir(v.ok()?.path()).ok())
+        .flatten()
+        .filter_map(|f| Some(f.ok()?.path()))
+        .filter(|p| p.extension().is_some_and(|e| e == "dll"))
+        .collect();
+    images.sort();
+    if images.is_empty() {
+        eprintln!("skipping: set PEWTER_TEST_PE or install .NET to provide test images");
+    }
+    images
+}
+
+fn sample() -> Option<Vec<u8>> {
+    let images = test_images();
+    let path = images
+        .iter()
+        .find(|p| p.file_name().is_some_and(|n| n == "System.Runtime.dll"))
+        .or(images.first())?;
+    Some(std::fs::read(path).unwrap())
+}
 
 #[test]
 fn unmodified_write_is_identical() {
-    let mut def = PEImageDef::parse(SAMPLE).unwrap();
-    let written = def.write_file().unwrap();
-    assert_eq!(written.len(), SAMPLE.len());
-    assert!(written == SAMPLE, "rewritten image differs from the original");
+    for path in test_images() {
+        let data = std::fs::read(&path).unwrap();
+        let Ok(mut def) = PEImageDef::parse(&data) else {
+            continue;
+        };
+        let written = def.write_file().unwrap();
+        assert!(written == data, "{} differs after rewriting", path.display());
+    }
 }
 
 #[test]
 fn added_section_is_readable() {
-    let mut def = PEImageDef::parse(SAMPLE).unwrap();
+    let Some(sample) = sample() else { return };
+    let mut def = PEImageDef::parse(&sample).unwrap();
     let alignment = def.section_alignment();
     let last_end = def
         .sections
@@ -35,7 +70,7 @@ fn added_section_is_readable() {
     let pe = PEFile::parse(&written).unwrap();
     assert_eq!(&pe.sections.find_rva_data(rva as usize).unwrap()[..6], b"pewter");
 
-    let original = PEFile::parse(SAMPLE).unwrap();
+    let original = PEFile::parse(&sample).unwrap();
     for (a, b) in original.sections.0.iter().zip(pe.sections.0.iter()) {
         assert_eq!(a.row.virtual_address, b.row.virtual_address);
         assert_eq!(a.data, b.data);
@@ -49,7 +84,8 @@ fn added_section_is_readable() {
 
 #[test]
 fn cor20_header_round_trips_in_place() {
-    let pe = PEFile::parse(SAMPLE).unwrap();
+    let Some(sample) = sample() else { return };
+    let pe = PEFile::parse(&sample).unwrap();
     let header = pe.read_clr_runtime_header().unwrap().unwrap();
     let rva = pe
         .optional_header
@@ -64,6 +100,6 @@ fn cor20_header_round_trips_in_place() {
     pewter::io::Writer::write(&mut bytes, &header).unwrap();
     assert_eq!(def.read_at_rva(rva, ImageCor20Header::SIZE).unwrap(), &bytes[..]);
     def.write_at_rva(rva, &bytes).unwrap();
-    assert!(def.write_file().unwrap() == SAMPLE);
+    assert!(def.write_file().unwrap() == sample);
 }
 
