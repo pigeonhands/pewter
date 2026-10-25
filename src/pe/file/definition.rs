@@ -38,6 +38,7 @@ pub struct PEImageDef {
     /// Data after the last section (e.g. the certificate table).
     pub overlay: Vec<u8>,
     overlay_offset: usize,
+    first_raw_offset: usize,
 }
 
 impl PEImageDef {
@@ -62,6 +63,13 @@ impl PEImageDef {
             .unwrap_or_default();
 
         let Sections(Table(section_rows)) = sections;
+
+        let first_raw_offset = section_rows
+            .iter()
+            .map(|s| s.row.pointer_to_raw_data as usize)
+            .filter(|p| *p != 0)
+            .min()
+            .unwrap_or(0);
 
         let overlay_offset = section_rows
             .iter()
@@ -93,6 +101,7 @@ impl PEImageDef {
             sections: SectionDefinitions(sections),
             overlay: Vec::from(&file_bytes[overlay_offset..]),
             overlay_offset,
+            first_raw_offset,
         }
     }
 
@@ -181,6 +190,7 @@ impl PEImageDef {
 
         self.coff_header.number_of_sections = self.sections.len() as u16;
         self.coff_header.size_of_optional_header = self.optional_header.size() as u16;
+        self.make_room_for_headers();
 
         let size_of_headers = align_up(self.headers_size(), file_alignment);
         if let Some(first) = self.sections.first() {
@@ -229,12 +239,53 @@ impl PEImageDef {
         Ok(())
     }
 
+    /// Images whose sections are mapped straight from the file (section alignment
+    /// below the page size, as produced by crossgen) need file offsets congruent
+    /// to their RVA modulo 64K.
+    fn is_flat_layout(&self) -> bool {
+        self.section_alignment() < 0x1000
+    }
+
+    /// File offset of each section's raw data.
+    fn section_offsets(&self) -> Vec<usize> {
+        let file_alignment = self.file_alignment();
+        let mut cursor = align_up(self.headers_size(), file_alignment);
+        self.sections
+            .iter()
+            .map(|s| {
+                let mut offset = cursor;
+                if self.is_flat_layout() {
+                    const GRANULARITY: usize = 0x10000;
+                    let target = s.virtual_address as usize % GRANULARITY;
+                    offset = offset - offset % GRANULARITY + target;
+                    if offset < cursor {
+                        offset += GRANULARITY;
+                    }
+                }
+                cursor = offset + align_up(s.data.len(), file_alignment);
+                offset
+            })
+            .collect()
+    }
+
     fn raw_data_end(&self) -> usize {
         let file_alignment = self.file_alignment();
-        self.sections.iter().fold(
-            align_up(self.headers_size(), file_alignment),
-            |offset, s| offset + align_up(s.data.len(), file_alignment),
-        )
+        self.section_offsets()
+            .iter()
+            .zip(self.sections.iter())
+            .map(|(offset, s)| offset + align_up(s.data.len(), file_alignment))
+            .max()
+            .unwrap_or_else(|| align_up(self.headers_size(), file_alignment))
+    }
+
+    /// Drops the DOS stub if the section table would otherwise push the first
+    /// section's data to a later file offset.
+    fn make_room_for_headers(&mut self) {
+        let grows = align_up(self.headers_size(), self.file_alignment()) > self.first_raw_offset;
+        if grows && self.first_raw_offset != 0 && self.dos_header.e_lfanew as usize > ImageDosHeader::SIZE {
+            self.dos_stub.clear();
+            self.dos_header.e_lfanew = ImageDosHeader::SIZE as u32;
+        }
     }
 
     pub fn write_file(&mut self) -> Result<Vec<u8>> {
@@ -267,15 +318,12 @@ impl PEImageDef {
         self.coff_header.write_to(&mut buffer)?;
         self.optional_header.write_to(&mut buffer)?;
 
-        let mut data_offset = align_up(
-            buffer.len() + SectionTableRow::SIZE * self.sections.len(),
-            file_alignment,
-        );
-
+        let offsets = self.section_offsets();
         let rows: Vec<SectionTableRow> = self
             .sections
             .iter()
-            .map(|sec| {
+            .zip(offsets)
+            .map(|(sec, data_offset)| {
                 let mut name = [0u8; 8];
                 for (b, n) in sec.name.bytes().take(8).zip(name.iter_mut()) {
                     *n = b;
@@ -290,7 +338,6 @@ impl PEImageDef {
                     size_of_raw_data: size_of_raw_data as u32,
                     ..Default::default()
                 };
-                data_offset += size_of_raw_data;
                 row
             })
             .collect();
