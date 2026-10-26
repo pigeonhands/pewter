@@ -30,6 +30,7 @@ macro_rules! open_enum_value {
 pub mod containers;
 pub mod elf;
 pub mod error;
+pub mod image;
 pub mod io;
 pub mod pe;
 
