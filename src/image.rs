@@ -81,6 +81,19 @@ pub trait LoadedImage {
         self.bytes(vaddr, 1).map(|b| b[0])
     }
 
+    /// The `index`th pointer of an array at `base`, i.e. the pointer at
+    /// `base + index * pointer_size()`. Saves spelling out the stride when
+    /// walking a table of pointers.
+    fn pointer_at(&self, base: u64, index: u64) -> Option<u64> {
+        self.pointer(base + index * self.pointer_size())
+    }
+
+    /// `count` consecutive pointers starting at `vaddr`, or `None` if any is
+    /// unmapped.
+    fn pointers(&self, vaddr: u64, count: u64) -> Option<Vec<u64>> {
+        (0..count).map(|i| self.pointer_at(vaddr, i)).collect()
+    }
+
     /// Whether `vaddr` is a non-null, mapped address.
     fn is_mapped(&self, vaddr: u64) -> bool {
         vaddr != 0 && self.bytes(vaddr, 1).is_some()
@@ -334,5 +347,54 @@ impl LoadedImage for AnyImage<'_> {
             Self::Elf(image) => image.machine(),
             Self::Pe(image) => image.machine(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A flat little-endian 64-bit address space starting at `base`.
+    struct Flat {
+        base: u64,
+        data: Vec<u8>,
+    }
+
+    impl LoadedImage for Flat {
+        fn is_64(&self) -> bool {
+            true
+        }
+        fn bytes(&self, vaddr: u64, len: usize) -> Option<&[u8]> {
+            let start = vaddr.checked_sub(self.base)? as usize;
+            self.data.get(start..start + len)
+        }
+        fn pointer(&self, vaddr: u64) -> Option<u64> {
+            self.bytes(vaddr, 8)
+                .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
+        }
+        fn data_segments(&self) -> Vec<(u64, u64)> {
+            Vec::from([(self.base, self.base + self.data.len() as u64)])
+        }
+        fn exports(&self) -> Result<Vec<Export>> {
+            Ok(Vec::new())
+        }
+        fn machine(&self) -> Option<ImageFileMachine> {
+            None
+        }
+    }
+
+    #[test]
+    fn pointer_helpers_walk_an_array() {
+        let mut data = Vec::new();
+        for value in [10u64, 20, 30] {
+            data.extend_from_slice(&value.to_le_bytes());
+        }
+        let image = Flat { base: 0x1000, data };
+
+        assert_eq!(image.pointer_at(0x1000, 0), Some(10));
+        assert_eq!(image.pointer_at(0x1000, 2), Some(30));
+        assert_eq!(image.pointers(0x1000, 3), Some(Vec::from([10, 20, 30])));
+        // One element past the end makes the whole read fail.
+        assert_eq!(image.pointers(0x1000, 4), None);
     }
 }
