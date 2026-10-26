@@ -8,7 +8,10 @@ use crate::{
     containers::Table,
     error::{PewterError, Result},
     io::{ReadData, WriteData},
-    pe::{coff::CoffFileHeader, optional_header::OptionalHeader},
+    pe::{
+        coff::CoffFileHeader,
+        optional_header::{data_directories::ImageDataDirectory, OptionalHeader},
+    },
 };
 
 use super::ParseSectionData;
@@ -36,6 +39,8 @@ pub struct ExportTableDataDirectory {
     // These public export names are not necessarily the same as the private symbol names that the symbols have
     // in their own image file and source code, although they can be.
     pub export_name_table: Table<String>,
+    /// The name of the DLL, from [`ExportDirectory::name_rva`].
+    pub dll_name: String,
 }
 
 impl ParseSectionData for ExportTableDataDirectory {
@@ -47,68 +52,71 @@ impl ParseSectionData for ExportTableDataDirectory {
     ) -> Result<Self> {
         let export_directory_table = ExportDirectory::read(&mut section_data.as_ref())?;
 
-        let export_address_table_data = sections
-            .find_rva_data(export_directory_table.export_address_table as usize)
-            .ok_or_else(|| {
-                PewterError::invalid_image_format(
-                    "Failed to map export_address_table_data inside image",
-                )
-            })?;
+        let rva_data = |rva: u32, what: &'static str| {
+            sections
+                .find_rva_data(rva as usize)
+                .ok_or_else(|| PewterError::invalid_image_format(what))
+        };
 
-        let name_pointer_table_data = sections
-            .find_rva_data(export_directory_table.export_address_table as usize)
-            .ok_or_else(|| {
-                PewterError::invalid_image_format(
-                    "Failed to map name_pointer_table_data inside image",
-                )
-            })?;
+        let export_address_table = Table::new_linear(
+            &mut rva_data(
+                export_directory_table.export_address_table,
+                "Failed to map export_address_table inside image",
+            )?,
+            export_directory_table.address_table_entries as usize,
+        )?;
 
-        let export_ordinal_table_data = sections
-            .find_rva_data(export_directory_table.export_address_table as usize)
-            .ok_or_else(|| {
-                PewterError::invalid_image_format(
-                    "Failed to map export_ordinal_table_data inside image",
-                )
-            })?;
+        let name_count = export_directory_table.number_of_name_pointers as usize;
+        let (name_pointer_table, export_ordinal_table) = if name_count == 0 {
+            (Table::new(), Table::new())
+        } else {
+            (
+                Table::<ExportNamePointer>::new_linear(
+                    &mut rva_data(
+                        export_directory_table.name_pointer_rva,
+                        "Failed to map name_pointer_table inside image",
+                    )?,
+                    name_count,
+                )?,
+                Table::new_linear(
+                    &mut rva_data(
+                        export_directory_table.ordinal_table_rva,
+                        "Failed to map export_ordinal_table inside image",
+                    )?,
+                    name_count,
+                )?,
+            )
+        };
 
-        let export_name_data = sections
-            .find_rva_data(export_directory_table.name_rva as usize)
-            .ok_or_else(|| {
-                PewterError::invalid_image_format(
-                    "Failed to map export_ordinal_table_data inside image",
-                )
-            })?;
+        let export_name_table = Table(
+            name_pointer_table
+                .iter()
+                .map(|ptr| {
+                    rva_data(ptr.0, "Failed to map export name inside image").map(c_string)
+                })
+                .collect::<Result<Vec<_>>>()?,
+        );
 
-        let export_name_table = {
-            let mut values =
-                Vec::with_capacity(export_directory_table.number_of_name_pointers as usize);
-            let mut offset = 0;
-            for _ in 0..export_directory_table.number_of_name_pointers as usize {
-                let current_str_start = &export_name_data[offset..];
-                let null_term_pos = current_str_start.iter().position(|c| *c == 0).unwrap_or(0);
-                values.push(String::from_utf8_lossy(&current_str_start[..null_term_pos]).into());
-                offset += null_term_pos;
-            }
-            Table(values)
+        let dll_name = match export_directory_table.name_rva {
+            0 => String::new(),
+            rva => c_string(rva_data(rva, "Failed to map export dll name inside image")?),
         };
 
         Ok(Self {
-            export_address_table: Table::new_linear(
-                &mut export_address_table_data.as_ref(),
-                export_directory_table.address_table_entries as usize,
-            )?,
-            name_pointer_table: Table::new_linear(
-                &mut name_pointer_table_data.as_ref(),
-                export_directory_table.number_of_name_pointers as usize,
-            )?,
-            export_ordinal_table: Table::new_linear(
-                &mut export_ordinal_table_data.as_ref(),
-                export_directory_table.number_of_name_pointers as usize,
-            )?,
+            export_address_table,
+            name_pointer_table,
+            export_ordinal_table,
             export_name_table,
+            dll_name,
             export_directory_table,
         })
     }
+}
+
+/// A null-terminated ASCII string at the start of `data`.
+fn c_string(data: &[u8]) -> String {
+    let end = data.iter().position(|c| *c == 0).unwrap_or(data.len());
+    String::from_utf8_lossy(&data[..end]).into()
 }
 
 /// The export symbol information begins with the export directory table,
@@ -185,32 +193,30 @@ impl WriteData for ExportDirectory {
 /// indicated in the optional header), the field is an export RVA, which is an actual address in code or data.
 /// Otherwise, the field is a forwarder RVA, which names a symbol in another DLL.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ExportAddress {
-    /// The address of the exported symbol when loaded into memory,
-    /// relative to the image base. For example, the address of an exported function.
-    pub export_rva: u32,
-    /// The pointer to a null-terminated ASCII string in the export section.
-    /// This string must be within the range that is given by the export table data directory entry.
-    /// See [DataDirectories::export_table](crate::pe::optional_header::data_directories::DataDirectories::export_table)
+pub struct ExportAddress(pub u32);
+
+impl ExportAddress {
+    /// A forwarder RVA points inside the export table data directory, at a null-terminated
+    /// ASCII string in the export section. This string gives the DLL name and the name of the
+    /// export (for example, "MYDLL.expfunc") or the DLL name and the ordinal number of the
+    /// export (for example, "MYDLL.#27").
     ///
-    /// This string gives the DLL name and the name of the export (for example, "MYDLL.expfunc") or the DLL name and
-    /// the ordinal number of the export (for example, "MYDLL.#27").
-    pub forwarder_rva: u32,
+    /// See [DataDirectories::export_table](crate::pe::optional_header::data_directories::DataDirectories::export_table)
+    pub fn is_forwarder(&self, export_table: &ImageDataDirectory) -> bool {
+        self.0 >= export_table.virtual_address
+            && self.0 - export_table.virtual_address < export_table.size
+    }
 }
 
 impl ReadData for ExportAddress {
     fn read(reader: &mut impl crate::io::Reader) -> crate::error::Result<Self> {
-        Ok(Self {
-            export_rva: reader.read()?,
-            forwarder_rva: reader.read()?,
-        })
+        Ok(Self(reader.read()?))
     }
 }
 
 impl WriteData for ExportAddress {
     fn write_to(self, writer: &mut impl crate::io::Writer) -> crate::error::Result<()> {
-        writer.write(self.export_rva)?;
-        writer.write(self.forwarder_rva)?;
+        writer.write(self.0)?;
         Ok(())
     }
 }
