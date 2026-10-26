@@ -42,7 +42,7 @@ impl<'a> PEFile<'a> {
     }
 
     /// Parse with [`Options::minimal()`].
-    /// Does not parse any [`special_sections`](PEFile::special_sections).
+    /// Does not parse any special sections.
     #[inline(always)]
     pub fn parse_minimal(data: &'a [u8]) -> Result<Self> {
         Self::parse_with_options(data, Options::minimal())

@@ -431,7 +431,7 @@ pub trait ParseSectionData: Sized {
 
 /// Sections parsed from [OptionalHeader::data_directories](super::optional_header::OptionalHeader::data_directories).
 ///
-/// If the section is not specigied in [Options::parse_sections](crate::Options::parse_sections), it will be `None`.
+/// If the section is not specified in [Options::parse_special_sections](crate::Options::parse_special_sections), it will be `None`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SpecialSections {
     /// .edata section

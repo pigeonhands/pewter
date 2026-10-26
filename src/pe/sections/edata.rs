@@ -191,7 +191,7 @@ pub struct ExportAddress {
     pub export_rva: u32,
     /// The pointer to a null-terminated ASCII string in the export section.
     /// This string must be within the range that is given by the export table data directory entry.
-    /// See [DataDirectories::export_table](super::optional_header::data_directories::DataDirectories::export_table)
+    /// See [DataDirectories::export_table](crate::pe::optional_header::data_directories::DataDirectories::export_table)
     ///
     /// This string gives the DLL name and the name of the export (for example, "MYDLL.expfunc") or the DLL name and
     /// the ordinal number of the export (for example, "MYDLL.#27").
