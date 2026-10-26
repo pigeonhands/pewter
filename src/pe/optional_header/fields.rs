@@ -19,6 +19,7 @@ use strum::FromRepr;
 /// 0x107 identifies it as a ROM image, and 0x20B identifies it as a PE32+ executable.
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum OptionalHeaderMagic {
     #[default]
     PE32 = 0x10B,
@@ -51,6 +52,7 @@ impl WriteData for OptionalHeaderMagic {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct OptionalHeaderStandardFields {
     /// The unsigned integer that identifies the state of the image file.
     pub magic: OptionalHeaderMagic,
@@ -128,6 +130,7 @@ impl WriteData for &OptionalHeaderStandardFields {
 /// determine which Windows subsystem (if any) is required to run the image.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromRepr)]
 #[repr(u16)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ImageSubsystem {
     #[default]
     /// An unknown subsystem
@@ -174,6 +177,7 @@ impl ImageSubsystem {
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct ImageDllCharacteristics: u16 {
         /// Reserved, must be zero.
         const RESERVED = 0x01 | 0x02 | 0x04 | 0x08;
@@ -211,6 +215,7 @@ pub trait OptVariant {
 
 /// 32bit address size for Pe32.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Pe32;
 impl OptVariant for Pe32 {
     type Addr = u32;
@@ -218,6 +223,7 @@ impl OptVariant for Pe32 {
 
 /// 64bit address size for Pe32.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Pe32Plus;
 impl OptVariant for Pe32Plus {
     type Addr = u64;
@@ -230,6 +236,7 @@ pub(crate) trait CalulateOptVariantSize<A: OptVariant> {
 /// These 21 fields are an extension to the COFF optional header format.
 /// They contain additional information that is required by the linker and loader in Windows.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
 pub struct OptionalHeaderWindowsSpecificFields<A: OptVariant> {
     /// The preferred address of the first byte of image when loaded into memory;
     /// must be a multiple of 64 K. The default for DLLs is 0x10000000.
@@ -368,6 +375,8 @@ impl<T: OptVariant> WriteData for &OptionalHeaderWindowsSpecificFields<T> {
 /// Holds the Optional Header Windows Specific fields
 /// for either PE32 or PE32+.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum OptionalHeaderWindowsSpecific {
     PE32(OptionalHeaderWindowsSpecificFields<Pe32>),
     PE32Plus(OptionalHeaderWindowsSpecificFields<Pe32Plus>),

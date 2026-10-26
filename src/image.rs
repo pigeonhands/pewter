@@ -19,6 +19,7 @@ use crate::{
 
 /// A symbol exported by an image.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Export {
     /// `None` for a PE export by ordinal only.
     pub name: Option<String>,
@@ -40,6 +41,8 @@ impl Export {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ExportLocation {
     /// A virtual address in this image.
     Address(u64),
@@ -135,6 +138,7 @@ pub fn c_str_bytes(data: &[u8]) -> &[u8] {
 /// A loaded ELF image (e.g. a `.so`). Pointers are resolved through the
 /// relocation table, since ELF stores relative relocations rather than absolute
 /// addresses.
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ElfImage<'a> {
     elf: ElfFile<'a>,
     pointers: RelocatedPointers,
@@ -221,6 +225,7 @@ impl LoadedImage for ElfImage<'_> {
 /// A loaded PE image (e.g. a `.dll`). Pointers stored in a PE hold absolute
 /// virtual addresses at the preferred image base, so no relocation step is
 /// needed: the on-disk values and the addresses computed here share that base.
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct PeImage {
     pe: PEImageDef,
     image_base: u64,
@@ -337,6 +342,8 @@ impl LoadedImage for PeImage {
 }
 
 /// A PE or ELF image, as detected by [`AnyImage::load`].
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum AnyImage<'a> {
     Elf(ElfImage<'a>),
     Pe(Box<PeImage>),

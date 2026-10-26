@@ -7,6 +7,7 @@ use crate::{
 };
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 #[repr(u16)]
 pub enum ImageFileMachine {
     #[default]
@@ -111,6 +112,7 @@ impl ImageFileMachine {
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct ImageFileCharacteristics: u16 {
         /// Image only, Windows CE, and Microsoft Windows NT and later.
         /// This indicates that the file does not contain base relocations
@@ -162,6 +164,7 @@ bitflags! {
 /// is a standard COFF file header in the following format. Note that the Windows
 /// loader limits the number of sections to 96.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct CoffFileHeader {
     /// The number that identifies the type of target machine.
     pub machine: ImageFileMachine,

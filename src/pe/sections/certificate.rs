@@ -12,6 +12,7 @@ use super::ParseSectionData;
 /// certificate entries. Zero padding is inserted between the original end of the file and the beginning
 /// of the attribute certificate table to achieve this alignment.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct CertificateDataDirectory {
     pub certificates: Table<Certificate>,
 }
@@ -40,6 +41,7 @@ impl ParseSectionData for CertificateDataDirectory {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum CertificateType {
     X509 = 0x0001,
     PkcsSignedData = 0x0002,
@@ -66,6 +68,7 @@ impl Default for CertificateType {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum CertificateRevision {
     Revision1_0 = 0x0100,
     Revision2_0 = 0x0200,
@@ -89,6 +92,7 @@ impl Default for CertificateRevision {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Certificate {
     /// Specifies the length of the attribute certificate entry.
     pub length: u32,

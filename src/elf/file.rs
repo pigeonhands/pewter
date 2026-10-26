@@ -8,6 +8,7 @@ use crate::{
 };
 
 #[derive(Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ElfFile<'a> {
     pub header: ElfHeader,
     pub program_headers: Vec<ProgramHeader>,

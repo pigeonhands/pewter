@@ -15,6 +15,7 @@ use crate::{
 use super::ParseSectionData;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct BaseRelocationDataDitectory {
     pub relocations: Table<BaseRelocationBlockHeader>,
 }
@@ -36,6 +37,7 @@ impl ParseSectionData for BaseRelocationDataDitectory {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct BaseRelocationBlockHeader {
     /// The image base plus the page RVA is added to each offset to create the VA where the base relocation must be applied.
     pub base_rva: u32,
@@ -78,6 +80,7 @@ impl WriteData for BaseRelocationBlockHeader {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u8)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum BaseRelocationType {
     /// The base relocation is skipped. This type can be used to pad a block.
     #[default]
@@ -131,6 +134,7 @@ impl BaseRelocationType {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct BaseRelocationBlockOffsets {
     /// Stored in the high 4 bits of the WORD, a value that indicates the type of base relocation to be applied.
     pub relocation_type: BaseRelocationType,

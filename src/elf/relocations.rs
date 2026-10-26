@@ -26,6 +26,7 @@ impl ElfMachine {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Relocation {
     pub offset: u64,
     /// Index into the symbol table the section links to (`.dynsym` for dynamic relocations).
@@ -128,6 +129,7 @@ impl<'a> ElfFile<'a> {
 
 /// Pointer values from [`ElfFile::relocated_pointers`], sorted by address.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct RelocatedPointers(pub Vec<(u64, u64)>);
 
 impl RelocatedPointers {

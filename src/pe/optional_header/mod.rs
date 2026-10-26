@@ -17,6 +17,7 @@ use self::data_directories::{DataDirectories, ImageDataDirectory, SectionName};
 /// An object file can have an optional header, but generally this header has no function in an object
 /// file except to increase its size.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct OptionalHeader {
     /// The first eight fields of the optional header are standard fields that are defined for
     /// every implementation of COFF. These fields contain general information that is

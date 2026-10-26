@@ -12,6 +12,8 @@ use crate::{
 use super::ParseSectionData;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ExceptionHandlerDataDirectory {
     #[default]
     Unsupported,
@@ -58,6 +60,7 @@ impl WriteData for &ExceptionHandlerDataDirectory {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Mips32ExceptionHandlerTable {
     /// The VA of the corresponding function.
     pub begin_address: u32,
@@ -95,6 +98,8 @@ impl WriteData for &Mips32ExceptionHandlerTable {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ExceptionHandlerInstructionLength {
     #[default]
     Is16Bit,
@@ -102,6 +107,7 @@ pub enum ExceptionHandlerInstructionLength {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ArmPowerPCSH4WindowsCEExceptionHandlerTable {
     /// The VA of the corresponding function.
     pub begin_address: u32,
@@ -165,6 +171,7 @@ impl WriteData for &ArmPowerPCSH4WindowsCEExceptionHandlerTable {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct X64ExceptionHandlerTable {
     /// The VA of the corresponding function.
     pub begin_address: u32,

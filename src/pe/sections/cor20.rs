@@ -13,6 +13,7 @@ use super::ParseSectionData;
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct Cor20Flags: u32 {
         const IL_ONLY = 0x00000001;
         const REQUIRED_32BIT = 0x00000002;
@@ -25,6 +26,7 @@ bitflags! {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ImageCor20Header {
     pub major_rt_version: u16,
     pub minor_rt_version: u16,

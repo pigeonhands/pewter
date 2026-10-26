@@ -33,5 +33,7 @@ pub mod error;
 pub mod image;
 pub mod io;
 pub mod pe;
+#[cfg(feature = "reflect")]
+pub mod reflect;
 
 pub use pe::{options::Options, PEFile};

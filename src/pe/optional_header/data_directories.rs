@@ -5,6 +5,7 @@ use crate::io::{ReadData, WriteData};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, FromRepr, EnumIter, EnumCount)]
 #[repr(u8)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum SectionName {
     ExportTable = 0,
     ImportTable = 1,
@@ -26,6 +27,7 @@ pub enum SectionName {
 
 /// All the possable data directories.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct DataDirectories {
     /// The export table address and size.
     pub export_table: ImageDataDirectory,
@@ -110,6 +112,7 @@ impl DataDirectories {
 /// These data directory entries are all loaded into memory so that the system can use them at run time.
 /// A data directory is an 8-byte field that has the following declaration:
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ImageDataDirectory {
     /// The RVA of the table.
     ///

@@ -8,6 +8,7 @@ use crate::io::ReadData;
 use crate::io::Reader;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Table<T>(pub Vec<T>);
 
 impl<T> Table<T> {

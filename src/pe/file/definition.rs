@@ -34,6 +34,7 @@ pub fn align_up(value: usize, alignment: usize) -> usize {
 
 /// An owned, editable PE image that can be written back to bytes.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct PEImageDef {
     pub dos_header: ImageDosHeader,
     /// Bytes between the DOS header and the PE signature.
@@ -527,6 +528,7 @@ pub fn pe_checksum(data: &[u8], checksum_offset: usize) -> u32 {
 
 /// Sections ordered by virtual address.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SectionDefinitions(pub Vec<SectionHeap>);
 
 impl SectionDefinitions {
@@ -590,6 +592,7 @@ impl DerefMut for SectionDefinitions {
 }
 
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SectionHeap {
     /// Names longer than 8 bytes are truncated.
     pub name: String,

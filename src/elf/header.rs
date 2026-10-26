@@ -2,6 +2,7 @@ use strum::FromRepr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u8)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ElfClass {
     Elf32 = 1,
     Elf64 = 2,
@@ -9,6 +10,7 @@ pub enum ElfClass {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u8)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ElfData {
     Little = 1,
     Big = 2,
@@ -16,6 +18,7 @@ pub enum ElfData {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ElfType {
     None = 0,
     /// Relocatable object file.
@@ -40,6 +43,7 @@ impl ElfType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ElfMachine {
     None = 0,
     X86 = 3,
@@ -61,6 +65,7 @@ impl ElfMachine {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ElfHeader {
     pub class: ElfClass,
     pub byte_order: ElfData,

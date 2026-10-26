@@ -16,6 +16,7 @@
 use super::ParseSectionData;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ResourceDataDirectory(crate::vec::Vec<u8>);
 
 impl ParseSectionData for ResourceDataDirectory {

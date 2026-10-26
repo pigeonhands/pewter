@@ -4,6 +4,8 @@ use crate::alloc_containers::error::Error;
 pub type Result<T> = core::result::Result<T, PewterError>;
 
 #[derive(Debug)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum PewterError {
     NotEnoughDataLeft { attempted_read: usize },
     NotEnoughSpaceLeft { attempted_write: usize },

@@ -20,6 +20,7 @@ use crate::{string::String, vec::Vec};
 /// an array of import directory entries, one entry for each DLL to which the image refers.
 /// The last directory entry is empty (filled with null values), which indicates the end of the directory table.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ImportTableDataDirectory {
     /// The import directory table contains address information that is used to resolve fixup references
     /// to the entry points within a DLL image. The import directory table consists of an array of import
@@ -61,6 +62,7 @@ impl ParseSectionData for ImportTableDataDirectory {
 /// This groups the `import_directory_table` and `import_lookup_table`
 /// to the imoported dll.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ImportTableDataDirectoryEntry {
     /// The import directory table consists of an array of import
     /// directory entries, one entry for each DLL to which the image refers.
@@ -132,6 +134,7 @@ impl ImportTableDataDirectoryEntry {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ImportDirectoryTable {
     /// The RVA of the import lookup table.
     /// This table contains a name or ordinal for each import.
@@ -180,6 +183,8 @@ impl WriteData for &ImportDirectoryTable {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ImportTableRow {
     /// If this bit is set, import by ordinal. Otherwise, import by name.
     /// Bit is masked as 0x80000000 for PE32, 0x8000000000000000 for PE32+.

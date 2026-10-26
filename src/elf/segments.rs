@@ -6,6 +6,7 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u32)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum SegmentType {
     Null = 0,
     Load = 1,
@@ -34,6 +35,7 @@ impl SegmentType {
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct SegmentFlags: u32 {
         const EXECUTE = 0x1;
         const WRITE = 0x2;
@@ -42,6 +44,7 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ProgramHeader {
     pub segment_type: SegmentType,
     pub flags: SegmentFlags,

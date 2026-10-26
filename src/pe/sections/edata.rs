@@ -21,6 +21,7 @@ use super::ParseSectionData;
 use crate::{string::String, vec::Vec};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportTableDataDirectory {
     /// The export directory table contains address information that is used to resolve
     /// imports to the entry points within this image.
@@ -126,6 +127,8 @@ impl ExportTableDataDirectory {
 
 /// What an exported symbol resolves to.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", repr(C))]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum ExportTarget {
     /// The RVA of code or data in this image. Zero marks an unused ordinal.
     Rva(u32),
@@ -135,6 +138,7 @@ pub enum ExportTarget {
 
 /// One entry of the export address table. Its ordinal is its position plus the ordinal base.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportDef {
     /// Leave as `None` to export by ordinal only.
     pub name: Option<String>,
@@ -334,6 +338,7 @@ fn c_string(data: &[u8]) -> String {
 /// The export directory table contains address information that is used to
 /// resolve imports to the entry points within this image.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportDirectory {
     /// Reserved, must be 0.
     pub export_flags: u32,
@@ -403,6 +408,7 @@ impl WriteData for ExportDirectory {
 /// indicated in the optional header), the field is an export RVA, which is an actual address in code or data.
 /// Otherwise, the field is a forwarder RVA, which names a symbol in another DLL.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportAddress(pub u32);
 
 impl ExportAddress {
@@ -434,6 +440,7 @@ impl WriteData for ExportAddress {
 /// Pointer into the export name table.
 /// An export name is defined only if the export name pointer table contains a pointer to it.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportNamePointer(pub u32);
 
 impl ReadData for ExportNamePointer {
@@ -452,6 +459,7 @@ impl WriteData for ExportNamePointer {
 /// Index into the export address table. Ordinals are biased by the Ordinal Base field of the export directory table.
 /// In other words, the ordinal base must be subtracted from the ordinals to obtain true indexes into the export address table.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportOrtinal(pub u16);
 
 impl ReadData for ExportOrtinal {
@@ -472,6 +480,7 @@ impl WriteData for ExportOrtinal {
 /// For exported symbols that do have export names, corresponding entries in the export name pointer table and
 /// export ordinal table work together to associate each name with an ordinal.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ExportName(pub u16);
 
 impl ReadData for ExportName {

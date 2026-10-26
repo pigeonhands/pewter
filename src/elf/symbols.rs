@@ -5,6 +5,7 @@ use crate::{error::Result, vec::Vec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u8)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum SymbolType {
     NoType = 0,
     Object = 1,
@@ -17,6 +18,7 @@ pub enum SymbolType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u8)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum SymbolBinding {
     Local = 0,
     Global = 1,
@@ -26,6 +28,7 @@ pub enum SymbolBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Symbol<'a> {
     pub name: &'a str,
     pub name_offset: u32,

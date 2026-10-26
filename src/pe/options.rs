@@ -2,6 +2,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct ParseSectionFlags : u16 {
         const NONE = 0;
         const EXPORT_TABLE = 1<<0;
@@ -42,6 +43,7 @@ bitflags! {
 
 /// Parsing options.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Options {
     /// Specifies what special sections to parse.
     /// default: [`ParseSectionFlags::ALL`]

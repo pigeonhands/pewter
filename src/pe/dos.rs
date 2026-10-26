@@ -12,6 +12,7 @@ use crate::io::{ReadData, WriteData};
 /// to modern windows. The field of importants is  `e_lfanew`, witch
 /// points to the new windows header.
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct ImageDosHeader {
     /// Magic number
     pub e_magic: u16,

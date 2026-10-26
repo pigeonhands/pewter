@@ -19,6 +19,7 @@ use super::optional_header::OptionalHeader;
 use crate::vec::Vec;
 
 #[derive(Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SectionTable(Table<SectionTableRow>);
 
 impl SectionTable {
@@ -117,6 +118,7 @@ impl DerefMut for SectionTable {
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct SectionFlags : u32 {
         /// The section should not be padded to the next boundary.
         /// This flag is obsolete and is replaced by IMAGE_SCN_ALIGN_1BYTES.
@@ -212,6 +214,7 @@ bitflags! {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SectionTableRow {
     /// An 8-byte, null-padded UTF-8 encoded string.
     /// If the string is exactly 8 characters long, there is no terminating null.
@@ -333,6 +336,7 @@ impl WriteData for &SectionTableRow {
 
 /// Sections with their ccorrisponding data
 #[derive(Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Sections<'a>(pub Table<SectionRow<'a>>);
 
 impl<'a> Sections<'a> {
@@ -391,6 +395,7 @@ impl<'a> Sections<'a> {
 }
 
 #[derive(Default, Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SectionRow<'a> {
     pub row: SectionTableRow,
     pub data: &'a [u8],
@@ -433,6 +438,7 @@ pub trait ParseSectionData: Sized {
 ///
 /// If the section is not specified in [Options::parse_special_sections](crate::Options::parse_special_sections), it will be `None`.
 #[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SpecialSections {
     /// .edata section
     pub export_table: Option<edata::ExportTableDataDirectory>,

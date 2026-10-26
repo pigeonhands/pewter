@@ -7,6 +7,7 @@ use crate::{
 
 use crate::vec::Vec;
 
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct PEStream<T> {
     buffer: T,
     position: usize,

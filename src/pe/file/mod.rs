@@ -15,6 +15,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct PEFile<'a> {
     pub dos_header: dos::ImageDosHeader,
     pub coff_header: coff::CoffFileHeader,
@@ -24,6 +25,7 @@ pub struct PEFile<'a> {
 }
 
 #[derive(Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 struct FileBytes<'a>(&'a [u8]);
 
 impl<'a> core::fmt::Debug for FileBytes<'a> {

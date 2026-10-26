@@ -6,6 +6,7 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 #[repr(u32)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub enum SectionType {
     Null = 0,
     ProgBits = 1,
@@ -43,6 +44,7 @@ impl SectionType {
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    #[cfg_attr(feature = "reflect", derive(facet::Facet), facet(opaque))]
     pub struct SectionFlags: u64 {
         const WRITE = 0x1;
         const ALLOC = 0x2;
@@ -55,6 +57,7 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct SectionHeader {
     /// Offset of the name in the section name string table.
     pub name: u32,
@@ -88,6 +91,7 @@ impl SectionHeader {
 
 /// A section with its name and contents.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "reflect", derive(facet::Facet))]
 pub struct Section<'a> {
     pub header: SectionHeader,
     pub name: &'a str,
