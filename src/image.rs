@@ -94,10 +94,42 @@ pub trait LoadedImage {
         (0..count).map(|i| self.pointer_at(vaddr, i)).collect()
     }
 
+    /// The NUL-terminated string at `vaddr`, decoded as lossy UTF-8, or `None`
+    /// if `vaddr` is unmapped. Reads to a NUL byte or the end of the mapping.
+    fn c_str(&self, vaddr: u64) -> Option<String> {
+        let mut bytes = Vec::new();
+        let mut addr = vaddr;
+        loop {
+            match self.u8(addr)? {
+                0 => break,
+                byte => bytes.push(byte),
+            }
+            addr += 1;
+        }
+        Some(String::from_utf8_lossy(&bytes).into())
+    }
+
+    /// The pointer-sized slots of `segment` (a [`data_segments`](Self::data_segments)
+    /// range), as the virtual addresses `start`, `start + pointer_size()`, ... that
+    /// each still hold a full pointer. Useful for scanning a segment for a structure.
+    fn pointer_slots(&self, segment: (u64, u64)) -> impl Iterator<Item = u64> {
+        let (start, end) = segment;
+        let stride = self.pointer_size();
+        let count = end.saturating_sub(start) / stride;
+        (0..count).map(move |i| start + i * stride)
+    }
+
     /// Whether `vaddr` is a non-null, mapped address.
     fn is_mapped(&self, vaddr: u64) -> bool {
         vaddr != 0 && self.bytes(vaddr, 1).is_some()
     }
+}
+
+/// The bytes of the NUL-terminated string at the start of `data`, excluding the
+/// NUL (all of `data` if there is none).
+pub fn c_str_bytes(data: &[u8]) -> &[u8] {
+    let end = data.iter().position(|b| *b == 0).unwrap_or(data.len());
+    &data[..end]
 }
 
 /// A loaded ELF image (e.g. a `.so`). Pointers are resolved through the
@@ -114,6 +146,11 @@ impl<'a> ElfImage<'a> {
         let pointers = elf.relocated_pointers()?;
         Ok(Self { elf, pointers })
     }
+
+    /// The underlying parsed ELF.
+    pub fn elf(&self) -> &ElfFile<'a> {
+        &self.elf
+    }
 }
 
 impl LoadedImage for ElfImage<'_> {
@@ -123,6 +160,11 @@ impl LoadedImage for ElfImage<'_> {
 
     fn bytes(&self, vaddr: u64, len: usize) -> Option<&[u8]> {
         self.elf.data_at_vaddr(vaddr)?.get(..len)
+    }
+
+    fn c_str(&self, vaddr: u64) -> Option<String> {
+        let data = self.elf.data_at_vaddr(vaddr)?;
+        Some(String::from_utf8_lossy(c_str_bytes(data)).into())
     }
 
     fn pointer(&self, vaddr: u64) -> Option<u64> {
@@ -215,6 +257,12 @@ impl LoadedImage for PeImage {
         self.pe.read_at_rva(u32::try_from(rva).ok()?, len)
     }
 
+    fn c_str(&self, vaddr: u64) -> Option<String> {
+        let rva = u32::try_from(vaddr.checked_sub(self.image_base)?).ok()?;
+        let data = self.pe.data_at_rva(rva)?;
+        Some(String::from_utf8_lossy(c_str_bytes(data)).into())
+    }
+
     fn pointer(&self, vaddr: u64) -> Option<u64> {
         let size = self.pointer_size() as usize;
         let bytes = self.bytes(vaddr, size)?;
@@ -252,8 +300,7 @@ impl LoadedImage for PeImage {
             }
             let location = if address.is_forwarder(&dir) {
                 let data = self.pe.data_at_rva(address.0).unwrap_or_default();
-                let end = data.iter().position(|b| *b == 0).unwrap_or(data.len());
-                ExportLocation::Forwarder(String::from_utf8_lossy(&data[..end]).into())
+                ExportLocation::Forwarder(String::from_utf8_lossy(c_str_bytes(data)).into())
             } else {
                 ExportLocation::Address(self.image_base + address.0 as u64)
             };
@@ -304,6 +351,22 @@ impl<'a> AnyImage<'a> {
             Self::Pe(Box::new(PeImage::parse(data)?))
         })
     }
+
+    /// The ELF image, if this is one.
+    pub fn as_elf(&self) -> Option<&ElfImage<'a>> {
+        match self {
+            Self::Elf(image) => Some(image),
+            Self::Pe(_) => None,
+        }
+    }
+
+    /// The PE image, if this is one.
+    pub fn as_pe(&self) -> Option<&PeImage> {
+        match self {
+            Self::Pe(image) => Some(image),
+            Self::Elf(_) => None,
+        }
+    }
 }
 
 impl LoadedImage for AnyImage<'_> {
@@ -325,6 +388,13 @@ impl LoadedImage for AnyImage<'_> {
         match self {
             Self::Elf(image) => image.pointer(vaddr),
             Self::Pe(image) => image.pointer(vaddr),
+        }
+    }
+
+    fn c_str(&self, vaddr: u64) -> Option<String> {
+        match self {
+            Self::Elf(image) => image.c_str(vaddr),
+            Self::Pe(image) => image.c_str(vaddr),
         }
     }
 
@@ -396,5 +466,27 @@ mod tests {
         assert_eq!(image.pointers(0x1000, 3), Some(Vec::from([10, 20, 30])));
         // One element past the end makes the whole read fail.
         assert_eq!(image.pointers(0x1000, 4), None);
+    }
+
+    #[test]
+    fn pointer_slots_cover_whole_pointers_only() {
+        let image = Flat {
+            base: 0x1000,
+            data: Vec::from([0u8; 20]),
+        };
+        // 20 bytes at 8 bytes each: slots at 0x1000 and 0x1008; the trailing 4
+        // bytes cannot hold a pointer.
+        let slots: Vec<u64> = image.pointer_slots((0x1000, 0x1014)).collect();
+        assert_eq!(slots, [0x1000, 0x1008]);
+    }
+
+    #[test]
+    fn c_str_reads_to_nul_via_default() {
+        let mut data = Vec::from(*b"hello\0 rest");
+        data.push(0);
+        let image = Flat { base: 0x1000, data };
+        assert_eq!(image.c_str(0x1000).as_deref(), Some("hello"));
+        // Unmapped start reads nothing.
+        assert_eq!(image.c_str(0x2000), None);
     }
 }

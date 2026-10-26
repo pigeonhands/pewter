@@ -324,10 +324,9 @@ pub fn forward_all_exports(exports: &[Export], module: &str) -> (u32, Vec<Export
     })
 }
 
-/// A null-terminated ASCII string at the start of `data`.
+/// The null-terminated string at the start of `data`, as an owned lossy UTF-8 string.
 fn c_string(data: &[u8]) -> String {
-    let end = data.iter().position(|c| *c == 0).unwrap_or(data.len());
-    String::from_utf8_lossy(&data[..end]).into()
+    String::from_utf8_lossy(crate::image::c_str_bytes(data)).into()
 }
 
 /// The export symbol information begins with the export directory table,
