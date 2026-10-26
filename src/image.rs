@@ -4,13 +4,48 @@
 //! once loaded (after relocation), and enumerates the non-executable data
 //! segments. Useful for scanning a mapped image for data structures, such as an
 //! Il2Cpp game's registration tables.
+//!
+//! [`AnyImage::load`] detects the format.
 
 use crate::{
-    elf::{ElfFile, RelocatedPointers, SegmentFlags, SegmentType},
+    boxed::Box,
+    elf::{ElfFile, RelocatedPointers, SegmentFlags, SegmentType, SymbolBinding, SymbolType},
     error::Result,
-    pe::{file::definition::PEImageDef, sections::SectionFlags},
+    format,
+    pe::{coff::ImageFileMachine, file::definition::PEImageDef, sections::SectionFlags},
+    string::String,
     vec::Vec,
 };
+
+/// A symbol exported by an image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Export {
+    /// `None` for a PE export by ordinal only.
+    pub name: Option<String>,
+    /// The PE ordinal. ELF symbols have none.
+    pub ordinal: Option<u32>,
+    pub location: ExportLocation,
+}
+
+impl Export {
+    /// A PE forwarder string for the same symbol in `module`: `module.Name`, or
+    /// `module.#N` for an export by ordinal only.
+    pub fn forwarder_in(&self, module: &str) -> Option<String> {
+        match (&self.name, self.ordinal) {
+            (Some(name), _) => Some(format!("{module}.{name}")),
+            (None, Some(ordinal)) => Some(format!("{module}.#{ordinal}")),
+            (None, None) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportLocation {
+    /// A virtual address in this image.
+    Address(u64),
+    /// A PE forwarder to a symbol in another DLL, such as `"NTDLL.RtlAllocateHeap"`.
+    Forwarder(String),
+}
 
 /// Reads a loaded binary by virtual address, as it will be after relocation.
 pub trait LoadedImage {
@@ -23,6 +58,11 @@ pub trait LoadedImage {
     /// Virtual-address ranges of the loaded, non-executable segments (where
     /// data such as tables of pointers lives).
     fn data_segments(&self) -> Vec<(u64, u64)>;
+    /// The exported symbols: a PE's export table, or an ELF's defined dynamic
+    /// functions and objects.
+    fn exports(&self) -> Result<Vec<Export>>;
+    /// The machine as a PE machine type, or `None` if PE has no equivalent.
+    fn machine(&self) -> Option<ImageFileMachine>;
 
     fn pointer_size(&self) -> u64 {
         if self.is_64() {
@@ -91,6 +131,36 @@ impl LoadedImage for ElfImage<'_> {
             .map(|p| (p.vaddr, p.vaddr + p.file_size))
             .collect()
     }
+
+    fn exports(&self) -> Result<Vec<Export>> {
+        let mut exports: Vec<Export> = self
+            .elf
+            .symbols()?
+            .into_iter()
+            .filter(|s| {
+                s.dynamic
+                    && s.is_defined()
+                    && !s.name.is_empty()
+                    && matches!(
+                        s.binding(),
+                        Some(SymbolBinding::Global | SymbolBinding::Weak)
+                    )
+                    && matches!(s.symbol_type(), Some(SymbolType::Func | SymbolType::Object))
+            })
+            .map(|s| Export {
+                name: Some(s.name.into()),
+                ordinal: None,
+                location: ExportLocation::Address(s.value),
+            })
+            .collect();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
+        exports.dedup_by(|a, b| a.name == b.name);
+        Ok(exports)
+    }
+
+    fn machine(&self) -> Option<ImageFileMachine> {
+        ImageFileMachine::from_elf(self.elf.header.machine)
+    }
 }
 
 /// A loaded PE image (e.g. a `.dll`). Pointers stored in a PE hold absolute
@@ -153,5 +223,116 @@ impl LoadedImage for PeImage {
                 (start, start + s.virtual_size() as u64)
             })
             .collect()
+    }
+
+    fn exports(&self) -> Result<Vec<Export>> {
+        let Some(table) = self.pe.read_export_table()? else {
+            return Ok(Vec::new());
+        };
+        let dir = self.pe.optional_header.data_directories.export_table;
+        let base = table.export_directory_table.ordinal_base;
+
+        let mut exports = Vec::new();
+        for (i, address) in table.export_address_table.iter().enumerate() {
+            if address.0 == 0 {
+                continue;
+            }
+            let location = if address.is_forwarder(&dir) {
+                let data = self.pe.data_at_rva(address.0).unwrap_or_default();
+                let end = data.iter().position(|b| *b == 0).unwrap_or(data.len());
+                ExportLocation::Forwarder(String::from_utf8_lossy(&data[..end]).into())
+            } else {
+                ExportLocation::Address(self.image_base + address.0 as u64)
+            };
+            let ordinal = Some(base + i as u32);
+            let mut names = table
+                .export_ordinal_table
+                .iter()
+                .zip(table.export_name_table.iter())
+                .filter(|(o, _)| o.0 as usize == i)
+                .map(|(_, name)| Some(name.clone()))
+                .peekable();
+            if names.peek().is_none() {
+                exports.push(Export {
+                    name: None,
+                    ordinal,
+                    location,
+                });
+                continue;
+            }
+            for name in names {
+                exports.push(Export {
+                    name,
+                    ordinal,
+                    location: location.clone(),
+                });
+            }
+        }
+        Ok(exports)
+    }
+
+    fn machine(&self) -> Option<ImageFileMachine> {
+        Some(self.pe.coff_header.machine)
+    }
+}
+
+/// A PE or ELF image, as detected by [`AnyImage::load`].
+pub enum AnyImage<'a> {
+    Elf(ElfImage<'a>),
+    Pe(Box<PeImage>),
+}
+
+impl<'a> AnyImage<'a> {
+    /// Parses a PE or ELF image, detecting which it is.
+    pub fn load(data: &'a [u8]) -> Result<Self> {
+        Ok(if ElfFile::is_elf(data) {
+            Self::Elf(ElfImage::parse(data)?)
+        } else {
+            Self::Pe(Box::new(PeImage::parse(data)?))
+        })
+    }
+}
+
+impl LoadedImage for AnyImage<'_> {
+    fn is_64(&self) -> bool {
+        match self {
+            Self::Elf(image) => image.is_64(),
+            Self::Pe(image) => image.is_64(),
+        }
+    }
+
+    fn bytes(&self, vaddr: u64, len: usize) -> Option<&[u8]> {
+        match self {
+            Self::Elf(image) => image.bytes(vaddr, len),
+            Self::Pe(image) => image.bytes(vaddr, len),
+        }
+    }
+
+    fn pointer(&self, vaddr: u64) -> Option<u64> {
+        match self {
+            Self::Elf(image) => image.pointer(vaddr),
+            Self::Pe(image) => image.pointer(vaddr),
+        }
+    }
+
+    fn data_segments(&self) -> Vec<(u64, u64)> {
+        match self {
+            Self::Elf(image) => image.data_segments(),
+            Self::Pe(image) => image.data_segments(),
+        }
+    }
+
+    fn exports(&self) -> Result<Vec<Export>> {
+        match self {
+            Self::Elf(image) => image.exports(),
+            Self::Pe(image) => image.exports(),
+        }
+    }
+
+    fn machine(&self) -> Option<ImageFileMachine> {
+        match self {
+            Self::Elf(image) => image.machine(),
+            Self::Pe(image) => image.machine(),
+        }
     }
 }

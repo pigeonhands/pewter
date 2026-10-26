@@ -12,8 +12,12 @@ use crate::{
         optional_header::{
             self,
             data_directories::{ImageDataDirectory, SectionName},
+            ImageSubsystem,
         },
-        sections::{SectionFlags, SectionTableRow, Sections},
+        sections::{
+            edata::{self, ExportDef, ExportTableDataDirectory},
+            SectionFlags, SectionTableRow, Sections,
+        },
     },
     string::String,
     vec::Vec,
@@ -79,6 +83,23 @@ impl PEImageDef {
             first_raw_offset: 0,
             created: true,
         }
+    }
+
+    /// A new DLL with no sections, PE32+ if `machine` is 64-bit.
+    pub fn new_dll(machine: ImageFileMachine) -> Self {
+        let mut characteristics =
+            ImageFileCharacteristics::EXECUTABLE_IMAGE | ImageFileCharacteristics::FILE_DLL;
+        let optional_header = if machine.is_64_bit() {
+            characteristics |= ImageFileCharacteristics::LARGE_ADDRESS_AWARE;
+            optional_header::OptionalHeader::new_pe32_plus(
+                ImageSubsystem::WindowsGui,
+                0x1_8000_0000,
+            )
+        } else {
+            characteristics |= ImageFileCharacteristics::FOR_32BIT_MACHINE;
+            optional_header::OptionalHeader::new_pe32(ImageSubsystem::WindowsGui, 0x1000_0000)
+        };
+        Self::new(machine, characteristics, optional_header)
     }
 
     pub fn parse(data: &[u8]) -> Result<Self> {
@@ -157,23 +178,26 @@ impl PEImageDef {
             .section_alignment() as usize
     }
 
+    /// The virtual address [`PEImageDef::new_section`] would give the next section.
+    pub fn next_section_rva(&self) -> u32 {
+        let after_headers = align_up(
+            self.headers_size() + SectionTableRow::SIZE,
+            self.section_alignment(),
+        );
+        self.sections
+            .next_virtual_address(self.section_alignment())
+            .max(after_headers) as u32
+    }
+
     /// Adds a new empty section after the last one.
     pub fn new_section(
         &mut self,
         name: impl Into<String>,
         characteristics: SectionFlags,
     ) -> &mut SectionHeap {
-        let after_headers = align_up(
-            self.headers_size() + SectionTableRow::SIZE,
-            self.section_alignment(),
-        );
-        let virtual_address = self
-            .sections
-            .next_virtual_address(self.section_alignment())
-            .max(after_headers);
         let section = SectionHeap {
             name: name.into(),
-            virtual_address: virtual_address as u32,
+            virtual_address: self.next_section_rva(),
             data: Vec::new(),
             characteristics,
             virtual_size: 0,
@@ -182,10 +206,49 @@ impl PEImageDef {
         self.sections.last_mut().unwrap()
     }
 
+    /// Builds an export directory into a new `.edata` section and points
+    /// `data_directories.export_table` at it. Export `i` gets ordinal `ordinal_base + i`.
+    /// Returns the directory's RVA.
+    pub fn add_export_table(
+        &mut self,
+        dll_name: &str,
+        ordinal_base: u32,
+        exports: &[ExportDef],
+    ) -> Result<u32> {
+        let rva = self.next_section_rva();
+        let data = edata::build_export_data(rva, dll_name, ordinal_base, exports)?;
+        let size = data.len() as u32;
+        self.new_section(
+            ".edata",
+            SectionFlags::CNT_INITIALIZED_DATA | SectionFlags::MEM_READ,
+        )
+        .data = data;
+        self.optional_header.data_directories.export_table = ImageDataDirectory {
+            virtual_address: rva,
+            size,
+        };
+        Ok(rva)
+    }
+
     pub fn read_at_rva(&self, rva: u32, len: usize) -> Option<&[u8]> {
+        self.data_at_rva(rva)?.get(..len)
+    }
+
+    /// The section data from `rva` to the end of its section.
+    pub fn data_at_rva(&self, rva: u32) -> Option<&[u8]> {
         let section = self.sections.find_rva(rva as usize)?;
-        let start = (rva - section.virtual_address) as usize;
-        section.data.get(start..start + len)
+        section.data.get((rva - section.virtual_address) as usize..)
+    }
+
+    pub fn read_export_table(&self) -> Result<Option<ExportTableDataDirectory>> {
+        let dir = self.optional_header.data_directories.export_table;
+        if dir.is_null() {
+            return Ok(None);
+        }
+        let data = self.data_at_rva(dir.virtual_address).ok_or_else(|| {
+            PewterError::invalid_image_format("Export table is not inside a section")
+        })?;
+        ExportTableDataDirectory::read(data, |rva| self.data_at_rva(rva)).map(Some)
     }
 
     pub fn write_at_rva(&mut self, rva: u32, data: &[u8]) -> Result<()> {

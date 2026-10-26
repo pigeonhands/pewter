@@ -2,7 +2,11 @@
 
 use std::process::Command;
 
-use pewter::elf::{ElfClass, ElfFile, ElfMachine, ElfType, SectionType, SegmentType};
+use pewter::{
+    elf::{ElfClass, ElfFile, ElfMachine, ElfType, SectionType, SegmentType},
+    image::{AnyImage, ExportLocation, LoadedImage},
+    pe::coff::ImageFileMachine,
+};
 
 fn readelf(args: &[&str], path: &str) -> Option<String> {
     let output = Command::new("readelf").args(args).arg(path).output().ok()?;
@@ -114,4 +118,20 @@ fn il2cpp_game_assembly() {
     let (vaddr, value) = pointers.0[pointers.len() / 2];
     assert_eq!(elf.read_pointer(vaddr, &pointers), Some(value));
     check_against_readelf(&path);
+}
+
+#[test]
+fn libc_loads_as_elf_with_exports() {
+    let Ok(data) = std::fs::read("/usr/lib/libc.so.6") else {
+        eprintln!("skipping: /usr/lib/libc.so.6 not found");
+        return;
+    };
+    let image = AnyImage::load(&data).unwrap();
+    assert!(matches!(image, AnyImage::Elf(_)));
+    assert_eq!(image.machine(), ImageFileMachine::from_elf(ElfMachine::X86_64));
+    let exports = image.exports().unwrap();
+    let malloc = exports.iter().find(|e| e.name.as_deref() == Some("malloc")).unwrap();
+    let ExportLocation::Address(vaddr) = malloc.location else { panic!() };
+    assert!(image.is_mapped(vaddr));
+    assert!(exports.windows(2).all(|w| w[0].name < w[1].name));
 }

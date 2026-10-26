@@ -4,12 +4,12 @@
 #[cfg(feature = "std")]
 mod alloc_containers {
     pub extern crate std;
-    pub use std::{error, string, vec};
+    pub use std::{boxed, error, format, string, vec};
 }
 #[cfg(not(feature = "std"))]
 mod alloc_containers {
     extern crate alloc;
-    pub use alloc::{borrow, string, vec};
+    pub use alloc::{borrow, boxed, format, string, vec};
 }
 
 pub(crate) use alloc_containers::*;

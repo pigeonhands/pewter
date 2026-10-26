@@ -7,7 +7,9 @@
 use crate::{
     containers::Table,
     error::{PewterError, Result},
-    io::{ReadData, WriteData},
+    image::Export,
+    vec,
+    io::{ReadData, WriteData, Writer},
     pe::{
         coff::CoffFileHeader,
         optional_header::{data_directories::ImageDataDirectory, OptionalHeader},
@@ -50,12 +52,21 @@ impl ParseSectionData for ExportTableDataDirectory {
         _: &OptionalHeader,
         _: &CoffFileHeader,
     ) -> Result<Self> {
-        let export_directory_table = ExportDirectory::read(&mut section_data.as_ref())?;
+        Self::read(section_data, |rva| sections.find_rva_data(rva as usize))
+    }
+}
+
+impl ExportTableDataDirectory {
+    /// Reads the export directory at the start of `directory_data`. `image_data` maps an
+    /// RVA to the image bytes from there to the end of its section.
+    pub fn read<'d>(
+        directory_data: &[u8],
+        image_data: impl Fn(u32) -> Option<&'d [u8]>,
+    ) -> Result<Self> {
+        let export_directory_table = ExportDirectory::read(&mut directory_data.as_ref())?;
 
         let rva_data = |rva: u32, what: &'static str| {
-            sections
-                .find_rva_data(rva as usize)
-                .ok_or_else(|| PewterError::invalid_image_format(what))
+            image_data(rva).ok_or_else(|| PewterError::invalid_image_format(what))
         };
 
         let export_address_table = Table::new_linear(
@@ -111,6 +122,206 @@ impl ParseSectionData for ExportTableDataDirectory {
             export_directory_table,
         })
     }
+}
+
+/// What an exported symbol resolves to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExportTarget {
+    /// The RVA of code or data in this image. Zero marks an unused ordinal.
+    Rva(u32),
+    /// A symbol in another DLL, as `"OtherDll.Name"` or `"OtherDll.#27"`.
+    Forwarder(String),
+}
+
+/// One entry of the export address table. Its ordinal is its position plus the ordinal base.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportDef {
+    /// Leave as `None` to export by ordinal only.
+    pub name: Option<String>,
+    pub target: ExportTarget,
+}
+
+impl ExportDef {
+    pub fn rva(name: impl Into<String>, rva: u32) -> Self {
+        Self {
+            name: Some(name.into()),
+            target: ExportTarget::Rva(rva),
+        }
+    }
+
+    pub fn forwarder(name: impl Into<String>, forwarder: impl Into<String>) -> Self {
+        Self {
+            name: Some(name.into()),
+            target: ExportTarget::Forwarder(forwarder.into()),
+        }
+    }
+}
+
+/// Serializes an export directory, with its tables and strings, for placement at `rva`.
+///
+/// Forwarder strings are placed inside the returned data, so the export table data
+/// directory must cover all of it for loaders to recognise them.
+pub fn build_export_data(
+    rva: u32,
+    dll_name: &str,
+    ordinal_base: u32,
+    exports: &[ExportDef],
+) -> Result<Vec<u8>> {
+    const DIRECTORY_SIZE: usize = 40;
+
+    if dll_name.is_empty() || dll_name.contains('\0') {
+        return Err(PewterError::invalid_image_format("Invalid export dll name"));
+    }
+    if exports.len() > u16::MAX as usize + 1 {
+        return Err(PewterError::invalid_image_format(
+            "Too many exports for the ordinal table",
+        ));
+    }
+    for export in exports {
+        if let ExportTarget::Forwarder(forwarder) = &export.target {
+            let valid = forwarder
+                .split_once('.')
+                .is_some_and(|(dll, name)| !dll.is_empty() && !name.is_empty())
+                && !forwarder.contains('\0');
+            if !valid {
+                return Err(PewterError::invalid_image_format(
+                    "Export forwarder must look like OtherDll.Name",
+                ));
+            }
+        }
+    }
+
+    // The name pointer table is sorted lexically so loaders can binary search it.
+    let mut named: Vec<(&str, u16)> = exports
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| Some((e.name.as_deref()?, i as u16)))
+        .collect();
+    named.sort_unstable_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    if named
+        .iter()
+        .any(|(name, _)| name.is_empty() || name.contains('\0'))
+    {
+        return Err(PewterError::invalid_image_format("Invalid export name"));
+    }
+    if named.windows(2).any(|w| w[0].0 == w[1].0) {
+        return Err(PewterError::invalid_image_format("Duplicate export name"));
+    }
+
+    let address_table = DIRECTORY_SIZE;
+    let name_pointers = address_table + 4 * exports.len();
+    let ordinals = name_pointers + 4 * named.len();
+    let strings = ordinals + 2 * named.len();
+
+    let mut string_data = Vec::new();
+    let mut add_string = |s: &str| -> Result<u32> {
+        let offset = strings + string_data.len();
+        string_data.extend_from_slice(s.as_bytes());
+        string_data.push(0);
+        u32::try_from(offset)
+            .ok()
+            .and_then(|offset| rva.checked_add(offset))
+            .ok_or_else(|| {
+                PewterError::invalid_image_format("Export table does not fit in the image")
+            })
+    };
+
+    let name_rva = add_string(dll_name)?;
+    let name_rvas = named
+        .iter()
+        .map(|(name, _)| add_string(name))
+        .collect::<Result<Vec<_>>>()?;
+    let addresses = exports
+        .iter()
+        .map(|e| match &e.target {
+            ExportTarget::Rva(rva) => Ok(*rva),
+            ExportTarget::Forwarder(forwarder) => add_string(forwarder),
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut data = Vec::with_capacity(strings + string_data.len());
+    data.write(ExportDirectory {
+        name_rva,
+        ordinal_base,
+        address_table_entries: exports.len() as u32,
+        number_of_name_pointers: named.len() as u32,
+        export_address_table: rva + address_table as u32,
+        name_pointer_rva: rva + name_pointers as u32,
+        ordinal_table_rva: rva + ordinals as u32,
+        ..Default::default()
+    })?;
+    for address in addresses {
+        data.write(ExportAddress(address))?;
+    }
+    for name_rva in name_rvas {
+        data.write(ExportNamePointer(name_rva))?;
+    }
+    for (_, ordinal) in &named {
+        data.write(ExportOrtinal(*ordinal))?;
+    }
+    data.write_slice(&string_data)?;
+    Ok(data)
+}
+
+/// Export definitions for `exports`, with `target` choosing what each resolves to in
+/// the new table, or `None` to leave it out. Returns the ordinal base to build them with.
+///
+/// Return [`ExportTarget::Forwarder`] to forward an export to another module (see
+/// [`Export::forwarder_in`]), or [`ExportTarget::Rva`] to point it at a method written
+/// into this image instead, such as a hook. The source `exports` may come from a PE or
+/// an ELF, via [`AnyImage::exports`](crate::image::LoadedImage::exports).
+///
+/// Exports with an ordinal keep it; a name sharing an ordinal with an earlier one, and
+/// exports without an ordinal (such as ELF symbols), get new ordinals after the rest.
+/// Exports with neither a name nor an ordinal are skipped.
+pub fn forward_exports(
+    exports: &[Export],
+    mut target: impl FnMut(&Export) -> Option<ExportTarget>,
+) -> (u32, Vec<ExportDef>) {
+    let ordinal_base = exports.iter().filter_map(|e| e.ordinal).min().unwrap_or(1);
+    let slots = exports
+        .iter()
+        .filter_map(|e| Some(e.ordinal? - ordinal_base + 1))
+        .max()
+        .unwrap_or(0) as usize;
+    let mut defs: Vec<ExportDef> = (0..slots)
+        .map(|_| ExportDef {
+            name: None,
+            target: ExportTarget::Rva(0),
+        })
+        .collect();
+    let mut filled = vec![false; slots];
+
+    let mut extra = Vec::new();
+    for export in exports {
+        if export.name.is_none() && export.ordinal.is_none() {
+            continue;
+        }
+        let Some(target) = target(export) else {
+            continue;
+        };
+        let def = ExportDef {
+            name: export.name.clone(),
+            target,
+        };
+        match export.ordinal.map(|o| (o - ordinal_base) as usize) {
+            Some(slot) if !filled[slot] => {
+                defs[slot] = def;
+                filled[slot] = true;
+            }
+            _ => extra.push(def),
+        }
+    }
+    defs.append(&mut extra);
+    (ordinal_base, defs)
+}
+
+/// [`forward_exports`] with every export forwarded to the same symbol in `module`, a
+/// module name without its `.dll` extension. See [`Export::forwarder_in`].
+pub fn forward_all_exports(exports: &[Export], module: &str) -> (u32, Vec<ExportDef>) {
+    forward_exports(exports, |export| {
+        export.forwarder_in(module).map(ExportTarget::Forwarder)
+    })
 }
 
 /// A null-terminated ASCII string at the start of `data`.

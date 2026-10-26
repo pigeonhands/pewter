@@ -1,7 +1,10 @@
 use bitflags::bitflags;
 use strum::FromRepr;
 
-use crate::io::{ReadData, WriteData};
+use crate::{
+    elf::ElfMachine,
+    io::{ReadData, WriteData},
+};
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, FromRepr)]
 #[repr(u16)]
@@ -79,6 +82,30 @@ impl ImageFileMachine {
 
     pub fn to_u16(&self) -> u16 {
         crate::open_enum_value!(self, u16)
+    }
+
+    /// Whether images for this machine use the PE32+ format.
+    pub fn is_64_bit(&self) -> bool {
+        matches!(
+            self,
+            Self::Amd64
+                | Self::Arm64
+                | Self::IA64
+                | Self::Alpha64
+                | Self::LoongArch64
+                | Self::RiscV64
+        )
+    }
+
+    /// The equivalent PE machine for an ELF machine, if there is one.
+    pub fn from_elf(machine: ElfMachine) -> Option<Self> {
+        match machine {
+            ElfMachine::X86 => Some(Self::I386),
+            ElfMachine::X86_64 => Some(Self::Amd64),
+            ElfMachine::Arm => Some(Self::ArmNT),
+            ElfMachine::AArch64 => Some(Self::Arm64),
+            _ => None,
+        }
     }
 }
 
