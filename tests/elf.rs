@@ -101,12 +101,10 @@ fn libc_32_bit() {
 /// Il2Cpp game binaries rely on relocations for the pointers in their metadata tables.
 #[test]
 fn il2cpp_game_assembly() {
-    let path = std::env::var("PEWTER_TEST_ELF")
-        .unwrap_or_else(|_| "/games/SteamLibrary/steamapps/common/Megabonk/GameAssembly.so".into());
-    if !std::path::Path::new(&path).exists() {
-        eprintln!("skipping: set PEWTER_TEST_ELF to a GameAssembly.so");
+    let Ok(path) = std::env::var("PEWTER_TEST_ELF") else {
+        eprintln!("skipping: set PEWTER_TEST_ELF to an Il2Cpp GameAssembly.so");
         return;
-    }
+    };
     let data = std::fs::read(&path).unwrap();
     let elf = ElfFile::parse(&data).unwrap();
     let init = elf.find_symbol("il2cpp_init").unwrap().expect("il2cpp_init export");

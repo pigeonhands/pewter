@@ -67,3 +67,9 @@ let target = elf.read_pointer(0x1234, &pointers);
 
 Virtual addresses are mapped to file offsets through the `PT_LOAD` segments
 (`vaddr_to_offset` / `offset_to_vaddr`). Writing ELF files isn't supported.
+
+## Tests
+
+The tests use files already on the machine and skip what isn't there: the installed .NET
+framework DLLs for PE (or `PEWTER_TEST_PE`), the system `libc` for ELF, and `PEWTER_TEST_ELF`
+for an Il2Cpp `GameAssembly.so`.
