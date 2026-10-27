@@ -146,7 +146,7 @@ checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
 
 [[package]]
 name = "pewter"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "bitflags",
  "facet",

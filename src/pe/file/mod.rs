@@ -10,7 +10,8 @@ use crate::pe::{coff, dos, optional_header, options::Options, sections::SectionT
 use super::{
     optional_header::data_directories::{DataDirectories, ImageDataDirectory},
     sections::{
-        base_relocation, certificate, edata, idata, pdata, rsrc,cor20, ParseSectionData, Sections,
+        base_relocation, certificate, edata, idata, pdata, rsrc, cor20, tls, ParseSectionData,
+        Sections,
     },
 };
 
@@ -147,5 +148,10 @@ impl<'a> PEFile<'a> {
         &self,
     ) -> Result<Option<cor20::ImageCor20Header>> {
         self.read_section_data(|dirs| &dirs.clr_runtime_header)
+    }
+
+    #[inline(always)]
+    pub fn read_tls_directory(&self) -> Result<Option<tls::TlsDirectory>> {
+        self.read_section_data(|dirs| &dirs.tls_table)
     }
 }

@@ -5,6 +5,7 @@ pub mod idata;
 pub mod pdata;
 pub mod rsrc;
 pub mod cor20;
+pub mod tls;
 use crate::containers::Table;
 use crate::error::{PewterError, Result};
 use crate::io::{ReadData, WriteData};
@@ -452,6 +453,8 @@ pub struct SpecialSections {
     pub certificate_table: Option<certificate::CertificateDataDirectory>,
     /// The base relocation table address and size
     pub relocation_table: Option<base_relocation::BaseRelocationDataDitectory>,
+    /// The TLS directory
+    pub tls_directory: Option<tls::TlsDirectory>,
 }
 
 

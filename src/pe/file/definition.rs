@@ -241,6 +241,25 @@ impl PEImageDef {
         section.data.get((rva - section.virtual_address) as usize..)
     }
 
+    pub fn read_tls_directory(
+        &self,
+    ) -> Result<Option<super::super::sections::tls::TlsDirectory>> {
+        use super::super::sections::tls::TlsDirectory;
+        let dir = self.optional_header.data_directories.tls_table;
+        if dir.is_null() {
+            return Ok(None);
+        }
+        let data = self.data_at_rva(dir.virtual_address).ok_or_else(|| {
+            PewterError::invalid_image_format("TLS directory is not inside a section")
+        })?;
+        let tls = if self.optional_header.windows_specific_fields.is_pe32_plus() {
+            TlsDirectory::read_pe32_plus(data)?
+        } else {
+            TlsDirectory::read_pe32(data)?
+        };
+        Ok(Some(tls))
+    }
+
     pub fn read_export_table(&self) -> Result<Option<ExportTableDataDirectory>> {
         let dir = self.optional_header.data_directories.export_table;
         if dir.is_null() {
